@@ -42,8 +42,8 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { activeSubjects, findSubject, findTopic, getStudyStreak, recommendedNextTask, revisionStatus, searchData, semesterProgress, subjectProgress, topicCompletion, weeklyActivity } from '@/lib/progress';
-import { parsePlainTextSyllabus, parseSyllabus } from '@/lib/syllabusImport';
-import { AppPage, LearningState, Note, OrbitData, StudyTask, Subject } from '@/lib/types';
+import { calculateSyllabusStats, ExtractedSyllabus, extractedToOrbitData, extractSyllabus, extractSyllabusText } from '@/lib/syllabusImport';
+import { AppPage, LearningState, Module, Note, OrbitData, StudyTask, Subject, Topic } from '@/lib/types';
 import { useOrbitStore } from '@/store/useOrbitStore';
 
 const navItems: { page: AppPage; label: string; icon: typeof Gauge }[] = [
@@ -1346,7 +1346,6 @@ function SettingsPage() {
   const [subjectName, setSubjectName] = useState('');
   const [semesterTitle, setSemesterTitle] = useState(data.semester.title);
   const [program, setProgram] = useState(data.semester.program);
-  const [importMessage, setImportMessage] = useState('PDF parsing is mocked in development.');
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1362,7 +1361,7 @@ function SettingsPage() {
         <SectionHeader title="Data controls" />
         <div className="grid gap-3">
           <button type="button" onClick={exportData} className="flex items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-left text-sm"><Download size={16} /> Export all data as JSON</button>
-          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-sm"><Import size={16} /> Import JSON<input type="file" accept="application/json" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; if (!confirm('Importing JSON will replace current ORBIT data. Continue?')) { event.target.value = ''; return; } try { importData(JSON.parse(await file.text()) as OrbitData); setImportMessage('JSON import completed.'); } catch { setImportMessage('That JSON file could not be read safely.'); } }} /></label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-sm"><Import size={16} /> Import JSON<input type="file" accept="application/json" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; if (!confirm('Importing JSON will replace current ORBIT data. Continue?')) { event.target.value = ''; return; } try { importData(JSON.parse(await file.text()) as OrbitData); alert('JSON import completed.'); } catch { alert('That JSON file could not be read safely.'); } }} /></label>
           <button type="button" onClick={() => confirm('Reset all local ORBIT data?') && resetProgress()} className="flex items-center gap-2 rounded-xl border border-[var(--danger)]/35 p-3 text-left text-sm text-[var(--danger)]"><RotateCcw size={16} /> Reset progress</button>
         </div>
       </section>
@@ -1382,14 +1381,13 @@ function SettingsPage() {
         </div>
       </section>
       <section className="panel p-5 sm:p-6 xl:col-span-2">
-        <SectionHeader title="Syllabus import" action="Mocked PDF parser" />
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
-          <label className="rounded-2xl border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted)]">
-            Upload PDF syllabus
-            <input type="file" accept="application/pdf" className="mt-3 block w-full text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const result = await parseSyllabus(file); setImportMessage(result.warnings.join(' ')); } }} />
-          </label>
-          <div className="rounded-2xl border border-[var(--warning)]/35 bg-[rgba(215,174,104,0.1)] p-4 text-sm text-[var(--warning)]">{importMessage}</div>
-        </div>
+        <SyllabusImportFlow
+          mode="settings"
+          preferences={data.preferences}
+          onConfirm={(orbitData) => {
+            if (confirm('Generate a new semester from this reviewed syllabus and replace current ORBIT data?')) importData(orbitData);
+          }}
+        />
       </section>
       <section className="panel p-5 sm:p-6 xl:col-span-2">
         <SectionHeader title="Preferences" />
@@ -1570,74 +1568,208 @@ function Onboarding() {
   const applyTemplate = useOrbitStore((state) => state.useTemplate);
   const createSemester = useOrbitStore((state) => state.createSemester);
   const importData = useOrbitStore((state) => state.importData);
-  const [step, setStep] = useState(0);
   const [semesterTitle, setSemesterTitle] = useState('Semester III');
   const [program, setProgram] = useState('B.Tech CSE AIML');
-  const [setupMethod, setSetupMethod] = useState<'template' | 'manual' | 'import'>('template');
   const [workStyle, setWorkStyle] = useState<'One topic at a time' | 'Daily balanced plan' | 'Exam sprint' | 'Project-focused'>('Daily balanced plan');
   const [dailyTime, setDailyTime] = useState<'30 minutes' | '1 hour' | '2 hours' | 'Flexible'>('1 hour');
-  const finish = () => {
-    if (setupMethod === 'template') {
-      applyTemplate(semesterTitle);
-      completeOnboarding({ setupMethod, workStyle, dailyTime });
-    } else {
-      createSemester(semesterTitle, program);
-      completeOnboarding({ setupMethod, workStyle, dailyTime });
-    }
-  };
+  const preferences = { theme: 'dark' as const, onboardingComplete: true, setupMethod: 'import' as const, workStyle, dailyTime };
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] grid place-items-center bg-[var(--bg)] p-5">
-      <div className="w-full max-w-2xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-soft">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] overflow-y-auto bg-[var(--bg)] p-4 md:p-8">
+      <div className="mx-auto w-full max-w-5xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-soft md:p-7">
         <div className="mb-8 flex items-center justify-between">
-          <div><div className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">First launch</div><h1 className="mt-1 text-2xl font-semibold">Tune ORBIT</h1></div>
+          <div><div className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">First launch</div><h1 className="mt-1 text-2xl font-semibold">Import your semester into ORBIT</h1></div>
           <button onClick={() => completeOnboarding()} className="text-sm text-[var(--muted)]">Skip</button>
         </div>
-        {step === 0 && (
+        <div className="mb-5 grid gap-3 md:grid-cols-2">
           <div>
-            <h2 className="font-serif text-4xl">Create or select semester</h2>
-            <div className="mt-6 grid gap-3">
-              <input value={semesterTitle} onChange={(event) => setSemesterTitle(event.target.value)} className="rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" placeholder="Semester title" />
-              <input value={program} onChange={(event) => setProgram(event.target.value)} className="rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" placeholder="Program" />
-              <button onClick={() => setStep(1)} disabled={!semesterTitle.trim()} className="rounded-2xl bg-[var(--accent)] p-4 text-sm font-semibold text-white disabled:opacity-45">Continue</button>
-            </div>
+            <h2 className="font-serif text-4xl leading-tight">Upload a syllabus PDF. Review what ORBIT understood.</h2>
+            <p className="mt-3 text-sm leading-6 text-[var(--muted)]">The generated semester is not saved until you confirm the preview. You can rename subjects, clean modules, edit topics, merge duplicates and add missing work first.</p>
           </div>
-        )}
-        {step === 1 && <OnboardingStep title="Choose setup method" options={['template', 'manual', 'import']} selected={setupMethod} onSelect={(value) => { setSetupMethod(value as typeof setupMethod); setStep(value === 'import' ? 4 : 2); }} labels={{ template: 'Use B.Tech CSE AIML template', manual: 'Build my semester manually', import: 'Import syllabus' }} />}
-        {step === 2 && <OnboardingStep title="Choose study preference" options={['One topic at a time', 'Daily balanced plan', 'Exam sprint', 'Project-focused']} selected={workStyle} onSelect={(value) => { setWorkStyle(value as typeof workStyle); setStep(3); }} />}
-        {step === 3 && <OnboardingStep title="Choose realistic daily availability" options={['30 minutes', '1 hour', '2 hours', 'Flexible']} selected={dailyTime} onSelect={(value) => { setDailyTime(value as typeof dailyTime); finish(); }} />}
-        {step === 4 && <ImportSetup onImported={(data) => { importData(data); completeOnboarding({ setupMethod: 'import', workStyle, dailyTime }); }} onManual={() => setStep(2)} />}
+          <div className="grid gap-2">
+            <select value={workStyle} onChange={(event) => setWorkStyle(event.target.value as typeof workStyle)} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-sm">
+              {(['One topic at a time', 'Daily balanced plan', 'Exam sprint', 'Project-focused'] as const).map((style) => <option key={style}>{style}</option>)}
+            </select>
+            <select value={dailyTime} onChange={(event) => setDailyTime(event.target.value as typeof dailyTime)} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-3 text-sm">
+              {(['30 minutes', '1 hour', '2 hours', 'Flexible'] as const).map((time) => <option key={time}>{time}</option>)}
+            </select>
+          </div>
+        </div>
+        <SyllabusImportFlow mode="onboarding" preferences={preferences} onConfirm={(orbitData) => importData(orbitData)} />
+        <div className="mt-6 rounded-2xl border border-[var(--border)] p-4">
+          <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Secondary setup options</div>
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto_auto]">
+            <input value={semesterTitle} onChange={(event) => setSemesterTitle(event.target.value)} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" placeholder="Semester title" />
+            <input value={program} onChange={(event) => setProgram(event.target.value)} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" placeholder="Program" />
+            <button onClick={() => { createSemester(semesterTitle, program); completeOnboarding({ setupMethod: 'manual', workStyle, dailyTime }); }} className="rounded-xl border border-[var(--border)] px-4 py-2 text-sm">Build manually</button>
+            <button onClick={() => { applyTemplate(semesterTitle); completeOnboarding({ setupMethod: 'template', workStyle, dailyTime }); }} className="rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-2 text-sm text-[var(--accent)]">Use template</button>
+          </div>
+        </div>
       </div>
     </motion.div>
   );
 }
 
-function OnboardingStep({ title, options, selected, onSelect, labels }: { title: string; options: string[]; selected: string; onSelect: (value: string) => void; labels?: Record<string, string> }) {
-  return <div><h2 className="font-serif text-4xl">{title}</h2><div className="mt-6 grid gap-3">{options.map((option) => <button key={option} onClick={() => onSelect(option)} className={`rounded-2xl border p-4 text-left text-sm transition ${selected === option ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] hover:bg-white/[0.04]'}`}>{labels?.[option] ?? option}</button>)}</div></div>;
+function SyllabusImportFlow({ mode, preferences, onConfirm }: { mode: 'onboarding' | 'settings'; preferences: OrbitData['preferences']; onConfirm: (data: OrbitData) => void }) {
+  const [message, setMessage] = useState('Upload a PDF syllabus or paste syllabus text to generate a structured preview.');
+  const [paste, setPaste] = useState('');
+  const [draft, setDraft] = useState<ExtractedSyllabus>();
+  const [loading, setLoading] = useState(false);
+  const extractFile = async (file: File) => {
+    setLoading(true);
+    try {
+      const result = await extractSyllabus(file);
+      setDraft(result);
+      setMessage(result.warnings.join(' '));
+    } catch {
+      setMessage('ORBIT could not extract this PDF. Try copying the syllabus text into the paste box.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const extractText = async () => {
+    if (!paste.trim()) return;
+    setLoading(true);
+    const result = await extractSyllabusText(paste);
+    setDraft(result);
+    setMessage(result.warnings.join(' '));
+    setLoading(false);
+  };
+  return (
+    <div className={mode === 'settings' ? '' : 'rounded-2xl border border-[var(--border)] bg-white/[0.02] p-4'}>
+      <SectionHeader title="AI syllabus ingestion" action={draft ? 'Review before import' : 'Rule-based provider'} />
+      <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+        <div className="grid content-start gap-3">
+        <label className="rounded-2xl border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted)]">
+            Upload semester syllabus PDF
+            <input type="file" accept="application/pdf" className="mt-3 block w-full text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (file) await extractFile(file); }} />
+        </label>
+          <textarea value={paste} onChange={(event) => setPaste(event.target.value)} className="min-h-32 rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" placeholder="Or paste plain-text syllabus here..." />
+          <button onClick={extractText} disabled={!paste.trim() || loading} className="rounded-2xl bg-[var(--accent)] p-4 text-sm font-semibold text-white disabled:opacity-50">{loading ? 'Extracting...' : 'Extract syllabus text'}</button>
+          <div className="rounded-2xl border border-[var(--warning)]/35 bg-[rgba(215,174,104,0.1)] p-3 text-sm text-[var(--warning)]">{message}</div>
+        </div>
+        {draft ? <SyllabusReview draft={draft} setDraft={setDraft} onConfirm={() => onConfirm(extractedToOrbitData(draft, preferences))} /> : <SyllabusPreviewEmpty />}
+      </div>
+    </div>
+  );
 }
 
-function ImportSetup({ onImported, onManual }: { onImported: (data: OrbitData) => void; onManual: () => void }) {
-  const [message, setMessage] = useState('PDF parsing is mocked in development.');
-  const [paste, setPaste] = useState('');
+function SyllabusPreviewEmpty() {
   return (
-    <div>
-      <h2 className="font-serif text-4xl">Import syllabus</h2>
-      <p className="mt-3 text-sm text-[var(--muted)]">PDF upload UI is ready, but AI parsing is intentionally mocked until an API is connected.</p>
-      <div className="mt-6 grid gap-3">
-        <label className="rounded-2xl border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted)]">
-          Upload PDF syllabus
-          <input type="file" accept="application/pdf" className="mt-3 block w-full text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const result = await parseSyllabus(file); setMessage(result.warnings.join(' ')); } }} />
-        </label>
-        <textarea value={paste} onChange={(event) => setPaste(event.target.value)} className="min-h-32 rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" placeholder="Or paste plain-text syllabus here..." />
-        <div className="rounded-2xl border border-[var(--warning)]/35 bg-[rgba(215,174,104,0.1)] p-3 text-sm text-[var(--warning)]">{message}</div>
-        <button onClick={() => {
-          const parsed = parsePlainTextSyllabus(paste);
-          if (!parsed.subjects.length) {
-            setMessage(parsed.warnings.join(' '));
-            return;
-          }
-          onImported({ schemaVersion: 2, semester: { id: `semester-${Date.now()}`, title: 'Imported Semester', program: 'Imported syllabus', subjects: parsed.subjects, createdAt: new Date().toISOString(), templateSource: 'import' }, tasks: [], revisions: [], notes: [], sessions: [], streak: { current: 0 }, preferences: { theme: 'dark', onboardingComplete: true, setupMethod: 'import', workStyle: 'Daily balanced plan', dailyTime: '1 hour' } });
-        }} className="rounded-2xl bg-[var(--accent)] p-4 text-sm font-semibold text-white">Import pasted text</button>
-        <button onClick={onManual} className="rounded-2xl border border-[var(--border)] p-4 text-sm">Continue with manual setup</button>
+    <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-[var(--border)] p-6 text-center">
+      <div>
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-[var(--border)] bg-[var(--accent-soft)] text-[var(--accent)]"><Sparkles size={22} /></div>
+        <h3 className="mt-4 text-lg font-semibold">Structured preview appears here</h3>
+        <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">ORBIT will detect semester title, subject names, codes, credits, modules, topics and subtopics before anything is saved.</p>
+      </div>
+    </div>
+  );
+}
+
+function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllabus; setDraft: (value: ExtractedSyllabus | ((current: ExtractedSyllabus | undefined) => ExtractedSyllabus | undefined)) => void; onConfirm: () => void }) {
+  const updateDraft = (recipe: (next: ExtractedSyllabus) => void) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const next = structuredClone(current) as ExtractedSyllabus;
+      recipe(next);
+      next.stats = recalculateDraftStats(next.semester);
+      return next;
+    });
+  };
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--elevated)] p-4">
+        <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
+          <div>
+            <label className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Detected semester</label>
+            <input value={draft.semester.title} onChange={(event) => updateDraft((next) => { next.semester.title = event.target.value; })} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-lg font-semibold" />
+            <div className="mt-2 text-xs text-[var(--muted)]">Provider: {draft.provider}</div>
+          </div>
+          <button onClick={onConfirm} className="rounded-xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white">Generate semester</button>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-4">
+          <Metric label="Subjects" value={draft.stats.subjectCount} />
+          <Metric label="Topics" value={draft.stats.topicCount} />
+          <Metric label="Study hours" value={`${draft.stats.estimatedStudyHours}h`} />
+          <Metric label="Pace" value={draft.stats.weeklyPace} />
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <SectionHeader title="Difficulty ranking" action="Generated from topic complexity" />
+        <div className="grid gap-2">
+          {draft.stats.difficultyRanking.map((item, index) => (
+            <div key={item.subjectId} className="flex items-center gap-3 rounded-xl border border-[var(--border)] p-3 text-sm">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-[var(--accent-soft)] text-xs text-[var(--accent)]">{index + 1}</span>
+              <span className="min-w-0 flex-1 truncate">{item.subject}</span>
+              <span className="text-xs text-[var(--muted)]">{item.label} · {item.score}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+      <div className="space-y-3">
+        {draft.semester.subjects.map((subject, subjectIndex) => (
+          <details key={subject.id} open className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+            <summary className="cursor-pointer p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{subject.name}</div>
+                  <div className="text-xs text-[var(--muted)]">{subject.code} · {subject.credits} credits · {subject.modules.length} modules</div>
+                </div>
+                <button type="button" onClick={(event) => { event.preventDefault(); updateDraft((next) => { next.semester.subjects.splice(subjectIndex, 1); }); }} className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--danger)]/35 text-[var(--danger)]"><Trash2 size={15} /></button>
+              </div>
+            </summary>
+            <div className="space-y-4 border-t border-[var(--border)] p-4">
+              <div className="grid gap-2 md:grid-cols-[1fr_120px_90px]">
+                <input value={subject.name} onChange={(event) => updateDraft((next) => { next.semester.subjects[subjectIndex].name = event.target.value; next.semester.subjects[subjectIndex].shortName = event.target.value.slice(0, 12); })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+                <input value={subject.code} onChange={(event) => updateDraft((next) => { next.semester.subjects[subjectIndex].code = event.target.value; })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+                <input type="number" min={0} value={subject.credits} onChange={(event) => updateDraft((next) => { next.semester.subjects[subjectIndex].credits = Number(event.target.value) || 0; })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+              </div>
+              {subject.modules.map((module, moduleIndex) => (
+                <SyllabusModuleEditor
+                  key={module.id}
+                  module={module}
+                  onMoveUp={() => updateDraft((next) => moveItem(next.semester.subjects[subjectIndex].modules, moduleIndex, Math.max(0, moduleIndex - 1)))}
+                  onMoveDown={() => updateDraft((next) => moveItem(next.semester.subjects[subjectIndex].modules, moduleIndex, Math.min(next.semester.subjects[subjectIndex].modules.length - 1, moduleIndex + 1)))}
+                  onUpdate={(nextModule) => updateDraft((next) => { next.semester.subjects[subjectIndex].modules[moduleIndex] = nextModule; })}
+                  onDelete={() => updateDraft((next) => { next.semester.subjects[subjectIndex].modules.splice(moduleIndex, 1); })}
+                />
+              ))}
+              <button onClick={() => updateDraft((next) => { next.semester.subjects[subjectIndex].modules.push(makeReviewModule()); })} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Add module</button>
+            </div>
+          </details>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SyllabusModuleEditor({ module, onUpdate, onDelete, onMoveUp, onMoveDown }: { module: Module; onUpdate: (module: Module) => void; onDelete: () => void; onMoveUp: () => void; onMoveDown: () => void }) {
+  const updateModule = (recipe: (next: Module) => void) => {
+    const next = structuredClone(module) as Module;
+    recipe(next);
+    onUpdate(next);
+  };
+  return (
+    <div className="rounded-2xl border border-[var(--border)] p-3">
+      <div className="flex gap-2">
+        <input value={module.title} onChange={(event) => updateModule((next) => { next.title = event.target.value; })} className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+        <button onClick={onMoveUp} className="rounded-xl border border-[var(--border)] px-3 text-sm">Up</button>
+        <button onClick={onMoveDown} className="rounded-xl border border-[var(--border)] px-3 text-sm">Down</button>
+        <button onClick={onDelete} className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--danger)]/35 text-[var(--danger)]"><Trash2 size={15} /></button>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {module.topics.map((topic, topicIndex) => (
+          <div key={topic.id} className="rounded-xl border border-[var(--border)] p-3">
+            <div className="flex gap-2">
+              <input value={topic.title} onChange={(event) => updateModule((next) => { next.topics[topicIndex].title = event.target.value; })} className="min-w-0 flex-1 bg-transparent text-sm outline-none" />
+              <button onClick={() => updateModule((next) => { next.topics.splice(topicIndex, 1); })} className="text-[var(--danger)]"><Trash2 size={15} /></button>
+            </div>
+            <input value={topic.subtopics.map((item) => item.title).join(', ')} onChange={(event) => updateModule((next) => { next.topics[topicIndex].subtopics = event.target.value.split(',').map((title) => title.trim()).filter(Boolean).map(makeReviewSubtopic); })} placeholder="Subtopics, separated by commas" className="mt-2 w-full rounded-lg border border-[var(--border)] bg-transparent px-3 py-2 text-xs text-[var(--muted)]" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button onClick={() => updateModule((next) => { next.topics.push(makeReviewTopic('New topic')); })} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Add topic</button>
+        <button onClick={() => updateModule((next) => { next.topics = mergeDuplicateTopics(next.topics); })} className="rounded-xl border border-[var(--accent)]/40 px-3 py-2 text-sm text-[var(--accent)]">Merge duplicate topics</button>
       </div>
     </div>
   );
@@ -1750,4 +1882,65 @@ function averageConfidence(subject: Subject) {
   const topics = subject.modules.flatMap((module) => module.topics);
   if (!topics.length) return 0;
   return topics.reduce((sum, topic) => sum + topic.confidence, 0) / topics.length;
+}
+
+function recalculateDraftStats(semester: ExtractedSyllabus['semester']) {
+  return calculateSyllabusStats(semester);
+}
+
+function moveItem<T>(items: T[], from: number, to: number) {
+  if (from === to) return;
+  const [item] = items.splice(from, 1);
+  items.splice(to, 0, item);
+}
+
+function makeReviewId(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function makeReviewModule(): Module {
+  return { id: makeReviewId('module'), title: 'New module', custom: true, topics: [makeReviewTopic('New topic')] };
+}
+
+function makeReviewTopic(title: string): Topic {
+  return {
+    id: makeReviewId('topic'),
+    title,
+    description: title,
+    difficulty: 'Core',
+    estimatedMinutes: 45,
+    state: 'not-started',
+    confidence: 1,
+    checkpoints: ['concept', 'notes', 'code', 'questions', 'revision'].map((key) => ({ key: key as Topic['checkpoints'][number]['key'], label: String(key), completed: false })),
+    subtopics: [],
+    resources: [],
+    codingQuestions: [],
+    custom: true,
+  };
+}
+
+function makeReviewSubtopic(title: string) {
+  return {
+    id: makeReviewId('subtopic'),
+    title,
+    state: 'not-started' as const,
+    checkpoints: ['concept', 'notes', 'code', 'questions', 'revision'].map((key) => ({ key: key as Topic['checkpoints'][number]['key'], label: String(key), completed: false })),
+    confidence: 1,
+    estimatedMinutes: 25,
+  };
+}
+
+function mergeDuplicateTopics(topics: Topic[]) {
+  const byTitle = new Map<string, Topic>();
+  topics.forEach((topic) => {
+    const key = topic.title.trim().toLowerCase();
+    const existing = byTitle.get(key);
+    if (!existing) {
+      byTitle.set(key, topic);
+      return;
+    }
+    existing.subtopics = [...existing.subtopics, ...topic.subtopics].filter((subtopic, index, all) => all.findIndex((item) => item.title.toLowerCase() === subtopic.title.toLowerCase()) === index);
+    existing.description = [existing.description, topic.description].filter(Boolean).join(' ');
+  });
+  return Array.from(byTitle.values());
 }

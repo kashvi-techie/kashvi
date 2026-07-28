@@ -16,8 +16,9 @@ Open the local URL printed by Next.js.
 - `app/` contains the Next.js App Router entry, metadata and global theme CSS.
 - `components/OrbitApp.tsx` contains the responsive application shell, pages, panels and interaction surfaces.
 - `lib/types.ts` defines the typed domain model for Semester, Subject, Module, Topic, Subtopic, StudyTask, Revision, Note, StudySession and UserPreferences.
-- `lib/seed.ts` contains the seeded syllabus and realistic initial progress.
+- `lib/seed.ts` contains the optional B.Tech CSE AIML template with zero seeded progress.
 - `lib/progress.ts` contains reusable progress, search and revision helpers.
+- `lib/syllabusImport.ts` contains the syllabus extraction provider interface, PDF text extraction, rule-based parser and import statistics.
 - `store/useOrbitStore.ts` is the Zustand store with localStorage persistence.
 
 ## Persistence
@@ -57,11 +58,13 @@ The store methods can become a thin repository layer that reads and writes throu
 
 ## Included Features
 
-- First-launch product onboarding: create/select semester, choose setup method, choose study preference and daily availability
+- First-launch product onboarding centered on syllabus PDF ingestion, review and confirmation
 - Optional B.Tech CSE AIML syllabus template with zero seeded progress
 - Manual custom syllabus builder
 - JSON import/export
-- PDF syllabus upload UI with mocked parser service
+- PDF syllabus upload with rule-based text extraction and structured review before import
+- Editable syllabus preview: rename subjects, edit codes/credits/topics, reorder modules, merge duplicates, delete incorrect entries and add missing topics
+- Generated import intelligence: semester statistics, estimated study hours, topic counts, weekly study pace and subject difficulty ranking
 - Dark and light themes
 - Responsive desktop sidebar and mobile bottom navigation
 - Global search across subjects, modules, topics, subtopics, notes and tasks
@@ -75,15 +78,23 @@ The store methods can become a thin repository layer that reads and writes throu
 - JSON export/import, custom subject/topic creation and reset progress
 - Installable PWA shell with manifest, icons and offline app shell
 
-## Mocked Areas
+## Syllabus Ingestion
 
 `lib/syllabusImport.ts` exposes the intended parser contract:
 
 ```ts
-parseSyllabus(file) -> subjects -> modules -> topics -> subtopics
+extractSyllabus(file)
+  -> Semester
+    -> Subjects
+      -> Code, Credits
+      -> Modules
+        -> Topics
+          -> Subtopics
 ```
 
-PDF parsing is currently mocked in development. Plain-text parsing is heuristic. No screen pretends that PDF parsing succeeded without a real API.
+The first provider uses client-side PDF text extraction plus rule-based processing for common university syllabus formats. It is intentionally exposed behind `SyllabusParserProvider`, so an LLM provider such as Gemini, OpenAI or Claude can enhance extraction later without changing the onboarding or review UI.
+
+Imported data is not saved immediately. ORBIT always shows a structured review screen first, and the semester is generated only after confirmation.
 
 ## Testing Checklist
 
@@ -94,5 +105,6 @@ PDF parsing is currently mocked in development. Plain-text parsing is heuristic.
 5. Toggle topic checkpoints, refresh the page, and confirm the state persists.
 6. Complete a focus session and confirm weekly activity and streak update.
 7. Export JSON, reset progress, import JSON, and confirm the semester returns.
-8. Upload a PDF syllabus and confirm ORBIT clearly reports mocked parsing.
-9. Use a mobile viewport and confirm bottom navigation and full-screen topic sheet behavior.
+8. Upload or paste a syllabus and confirm the review screen appears before data is saved.
+9. Edit a subject, reorder a module, merge duplicate topics, add a topic, then generate the semester.
+10. Use a mobile viewport and confirm bottom navigation and full-screen topic sheet behavior.

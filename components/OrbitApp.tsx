@@ -44,7 +44,7 @@ import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ResponsiveContaine
 import { activeSubjects, findSubject, findTopic, getStudyStreak, recommendedNextTask, revisionStatus, searchData, semesterProgress, subjectProgress, topicCompletion, weeklyActivity } from '@/lib/progress';
 import { calculateSyllabusStats, ExtractedSyllabus, extractedToOrbitData, extractSyllabus, extractSyllabusText } from '@/lib/syllabusImport';
 import { AppPage, LearningState, Module, Note, OrbitData, StudyTask, Subject, Topic } from '@/lib/types';
-import { useOrbitStore } from '@/store/useOrbitStore';
+import { ImportMode, listOrbitBackups, useOrbitStore } from '@/store/useOrbitStore';
 
 const navItems: { page: AppPage; label: string; icon: typeof Gauge }[] = [
   { page: 'overview', label: 'Overview', icon: Gauge },
@@ -54,6 +54,7 @@ const navItems: { page: AppPage; label: string; icon: typeof Gauge }[] = [
   { page: 'practice', label: 'Practice', icon: ListChecks },
   { page: 'analytics', label: 'Analytics', icon: BarChart3 },
   { page: 'notes', label: 'Notes', icon: NotebookPen },
+  { page: 'history', label: 'History', icon: Timer },
   { page: 'settings', label: 'Settings', icon: Settings },
 ];
 
@@ -130,6 +131,7 @@ function AppFrame() {
               {activePage === 'practice' && <PracticePage />}
               {activePage === 'analytics' && <AnalyticsPage />}
               {activePage === 'notes' && <NotesPage />}
+              {activePage === 'history' && <HistoryPage />}
               {activePage === 'settings' && <SettingsPage />}
             </motion.div>
           </AnimatePresence>
@@ -274,6 +276,7 @@ function MobileApp() {
             {activePage === 'today' && <MobileToday onQuickAdd={() => setQuickAddOpen(true)} />}
             {activePage === 'revision' && <MobileRevision />}
             {activePage === 'notes' && <MobileNotes />}
+            {activePage === 'history' && <HistoryPage />}
             {activePage === 'settings' && <MobileProfile />}
             {['practice', 'analytics'].includes(activePage) && <MobileSubjects onSelect={setSelectedSubjectId} />}
           </motion.div>
@@ -722,6 +725,7 @@ function MobileProfile() {
         <div className="grid gap-2">
           <button onClick={() => updatePreferences({ theme: data.preferences.theme === 'dark' ? 'light' : 'dark' })} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Moon size={16} /> Theme: {data.preferences.theme}</button>
           <button onClick={() => setPage('notes')} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><NotebookPen size={16} /> Notes</button>
+          <button onClick={() => setPage('history')} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Timer size={16} /> Study history</button>
           <button onClick={exportData} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Download size={16} /> Export data</button>
           <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Import size={16} /> Import data<input type="file" accept="application/json" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; if (!confirm('Importing JSON will replace current ORBIT data. Continue?')) { event.target.value = ''; return; } try { importData(JSON.parse(await file.text()) as OrbitData); } catch { alert('That JSON file could not be read safely.'); } }} /></label>
           <button onClick={() => document.getElementById('mobile-semester-settings')?.scrollIntoView({ behavior: 'smooth' })} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><SlidersHorizontal size={16} /> Semester settings</button>
@@ -1339,6 +1343,7 @@ function SettingsPage() {
   const data = useOrbitStore((state) => state.data);
   const resetProgress = useOrbitStore((state) => state.resetProgress);
   const importData = useOrbitStore((state) => state.importData);
+  const restoreBackup = useOrbitStore((state) => state.restoreBackup);
   const addCustomSubject = useOrbitStore((state) => state.addCustomSubject);
   const updatePreferences = useOrbitStore((state) => state.updatePreferences);
   const applyTemplate = useOrbitStore((state) => state.useTemplate);
@@ -1346,6 +1351,7 @@ function SettingsPage() {
   const [subjectName, setSubjectName] = useState('');
   const [semesterTitle, setSemesterTitle] = useState(data.semester.title);
   const [program, setProgram] = useState(data.semester.program);
+  const [backups, setBackups] = useState(() => listOrbitBackups());
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -1363,6 +1369,22 @@ function SettingsPage() {
           <button type="button" onClick={exportData} className="flex items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-left text-sm"><Download size={16} /> Export all data as JSON</button>
           <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-sm"><Import size={16} /> Import JSON<input type="file" accept="application/json" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; if (!confirm('Importing JSON will replace current ORBIT data. Continue?')) { event.target.value = ''; return; } try { importData(JSON.parse(await file.text()) as OrbitData); alert('JSON import completed.'); } catch { alert('That JSON file could not be read safely.'); } }} /></label>
           <button type="button" onClick={() => confirm('Reset all local ORBIT data?') && resetProgress()} className="flex items-center gap-2 rounded-xl border border-[var(--danger)]/35 p-3 text-left text-sm text-[var(--danger)]"><RotateCcw size={16} /> Reset progress</button>
+        </div>
+      </section>
+      <section className="panel p-5 sm:p-6">
+        <SectionHeader title="Restore backup" action={`${backups.length} saved`} />
+        <div className="grid gap-2">
+          {backups.map((backup) => (
+            <div key={backup.key} className="rounded-xl border border-[var(--border)] p-3 text-sm">
+              <div className="font-medium">{new Date(backup.timestamp).toLocaleString()}</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">{backup.reason}</div>
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={() => { restoreBackup(backup.key); setBackups(listOrbitBackups()); }} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs">Restore</button>
+                <button type="button" onClick={() => downloadJson(backup.data, `orbit-backup-${backup.timestamp}.json`)} className="rounded-lg border border-[var(--border)] px-3 py-2 text-xs">Download</button>
+              </div>
+            </div>
+          ))}
+          {!backups.length && <EmptyState title="No backups yet" body="ORBIT creates backups before imports, migration, restore and replacement." />}
         </div>
       </section>
       <section className="panel p-5 sm:p-6">
@@ -1384,9 +1406,7 @@ function SettingsPage() {
         <SyllabusImportFlow
           mode="settings"
           preferences={data.preferences}
-          onConfirm={(orbitData) => {
-            if (confirm('Generate a new semester from this reviewed syllabus and replace current ORBIT data?')) importData(orbitData);
-          }}
+          onConfirm={(orbitData, importMode) => importData(orbitData, importMode)}
         />
       </section>
       <section className="panel p-5 sm:p-6 xl:col-span-2">
@@ -1395,6 +1415,45 @@ function SettingsPage() {
           {(['One topic at a time', 'Daily balanced plan', 'Exam sprint', 'Project-focused'] as const).map((style) => <button key={style} onClick={() => updatePreferences({ workStyle: style })} className={`rounded-xl border p-3 text-sm ${data.preferences.workStyle === style ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)]'}`}>{style}</button>)}
         </div>
       </section>
+    </div>
+  );
+}
+
+function HistoryPage() {
+  const data = useOrbitStore((state) => state.data);
+  const records = [...(data.activity ?? [])].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+  const groups = [
+    { title: 'Today', items: records.filter((record) => record.timestamp.slice(0, 10) === todayIso) },
+    { title: 'This week', items: records.filter((record) => record.timestamp.slice(0, 10) !== todayIso && record.timestamp.slice(0, 10) >= weekAgo) },
+    { title: 'Earlier', items: records.filter((record) => record.timestamp.slice(0, 10) < weekAgo) },
+  ];
+  return (
+    <div className="grid gap-5">
+      {groups.map((group) => (
+        <section key={group.title} className="panel p-5 sm:p-6">
+          <SectionHeader title={group.title} action={`${group.items.length} records`} />
+          <div className="grid gap-3">
+            {group.items.map((record) => {
+              const subject = record.subjectId ? findSubject(data, record.subjectId) : undefined;
+              const found = findTopic(data, record.topicId);
+              return (
+                <article key={record.id} className="rounded-2xl border border-[var(--border)] p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span className="rounded-lg bg-[var(--accent-soft)] px-2 py-1 text-xs text-[var(--accent)]">{record.action.replaceAll('_', ' ')}</span>
+                    <span>{subject?.shortName ?? found?.subject.shortName ?? 'ORBIT'}</span>
+                    {found && <span className="text-[var(--muted)]">· {found.topic.title}</span>}
+                    <span className="ml-auto text-xs text-[var(--muted)]">{new Date(record.timestamp).toLocaleString()}</span>
+                  </div>
+                  {record.metadata?.minutes !== undefined && <div className="mt-2 text-xs text-[var(--muted)]">Study duration: {String(record.metadata.minutes)} minutes</div>}
+                </article>
+              );
+            })}
+            {!group.items.length && <EmptyState title="No activity" body="Meaningful study actions will appear here." />}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }
@@ -1594,7 +1653,7 @@ function Onboarding() {
             </select>
           </div>
         </div>
-        <SyllabusImportFlow mode="onboarding" preferences={preferences} onConfirm={(orbitData) => importData(orbitData)} />
+        <SyllabusImportFlow mode="onboarding" preferences={preferences} onConfirm={(orbitData, importMode) => importData(orbitData, importMode)} />
         <div className="mt-6 rounded-2xl border border-[var(--border)] p-4">
           <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Secondary setup options</div>
           <div className="mt-3 grid gap-2 md:grid-cols-[1fr_1fr_auto_auto]">
@@ -1609,7 +1668,7 @@ function Onboarding() {
   );
 }
 
-function SyllabusImportFlow({ mode, preferences, onConfirm }: { mode: 'onboarding' | 'settings'; preferences: OrbitData['preferences']; onConfirm: (data: OrbitData) => void }) {
+function SyllabusImportFlow({ mode, preferences, onConfirm }: { mode: 'onboarding' | 'settings'; preferences: OrbitData['preferences']; onConfirm: (data: OrbitData, mode: ImportMode) => void }) {
   const [message, setMessage] = useState('Upload a PDF syllabus or paste syllabus text to generate a structured preview.');
   const [paste, setPaste] = useState('');
   const [draft, setDraft] = useState<ExtractedSyllabus>();
@@ -1647,7 +1706,7 @@ function SyllabusImportFlow({ mode, preferences, onConfirm }: { mode: 'onboardin
           <button onClick={extractText} disabled={!paste.trim() || loading} className="rounded-2xl bg-[var(--accent)] p-4 text-sm font-semibold text-white disabled:opacity-50">{loading ? 'Extracting...' : 'Extract syllabus text'}</button>
           <div className="rounded-2xl border border-[var(--warning)]/35 bg-[rgba(215,174,104,0.1)] p-3 text-sm text-[var(--warning)]">{message}</div>
         </div>
-        {draft ? <SyllabusReview draft={draft} setDraft={setDraft} onConfirm={() => onConfirm(extractedToOrbitData(draft, preferences))} /> : <SyllabusPreviewEmpty />}
+        {draft ? <SyllabusReview draft={draft} setDraft={setDraft} onConfirm={(importMode) => onConfirm(extractedToOrbitData(draft, preferences), importMode)} /> : <SyllabusPreviewEmpty />}
       </div>
     </div>
   );
@@ -1665,7 +1724,7 @@ function SyllabusPreviewEmpty() {
   );
 }
 
-function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllabus; setDraft: (value: ExtractedSyllabus | ((current: ExtractedSyllabus | undefined) => ExtractedSyllabus | undefined)) => void; onConfirm: () => void }) {
+function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllabus; setDraft: (value: ExtractedSyllabus | ((current: ExtractedSyllabus | undefined) => ExtractedSyllabus | undefined)) => void; onConfirm: (mode: ImportMode) => void }) {
   const updateDraft = (recipe: (next: ExtractedSyllabus) => void) => {
     setDraft((current) => {
       if (!current) return current;
@@ -1684,7 +1743,11 @@ function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllab
             <input value={draft.semester.title} onChange={(event) => updateDraft((next) => { next.semester.title = event.target.value; })} className="mt-2 w-full rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-lg font-semibold" />
             <div className="mt-2 text-xs text-[var(--muted)]">Provider: {draft.provider}</div>
           </div>
-          <button onClick={onConfirm} className="rounded-xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white">Generate semester</button>
+          <div className="grid gap-2">
+            <button onClick={() => onConfirm('add-semester')} className="rounded-xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white">Add as new semester</button>
+            <button onClick={() => onConfirm('merge-current')} className="rounded-xl border border-[var(--border)] px-4 py-3 text-sm">Merge into current</button>
+            <button onClick={() => { const typed = prompt('This replaces the current semester structure. ORBIT will create a backup first. Type REPLACE to continue.'); if (typed === 'REPLACE') onConfirm('replace-current'); }} className="rounded-xl border border-[var(--danger)]/45 px-4 py-3 text-sm text-[var(--danger)]">Replace current</button>
+          </div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-4">
           <Metric label="Subjects" value={draft.stats.subjectCount} />
@@ -1882,6 +1945,16 @@ function averageConfidence(subject: Subject) {
   const topics = subject.modules.flatMap((module) => module.topics);
   if (!topics.length) return 0;
   return topics.reduce((sum, topic) => sum + topic.confidence, 0) / topics.length;
+}
+
+function downloadJson(value: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function recalculateDraftStats(semester: ExtractedSyllabus['semester']) {

@@ -4,7 +4,7 @@ export type Difficulty = 'Foundation' | 'Core' | 'Hard' | 'Lab';
 export type ActionType = 'Learn' | 'Code' | 'Practise' | 'Revise' | 'Notes' | 'Assignment' | 'Exam preparation';
 export type Priority = 'Low' | 'Medium' | 'High';
 export type RevisionStatus = 'due' | 'overdue' | 'upcoming' | 'completed';
-export type AppPage = 'overview' | 'subjects' | 'today' | 'revision' | 'practice' | 'analytics' | 'notes' | 'settings';
+export type AppPage = 'overview' | 'subjects' | 'today' | 'revision' | 'practice' | 'analytics' | 'notes' | 'settings' | 'history';
 export type SetupMethod = 'template' | 'manual' | 'import';
 
 export type CheckpointKey = 'concept' | 'notes' | 'code' | 'questions' | 'revision';
@@ -123,6 +123,36 @@ export type StudySession = {
   completedAt: string;
 };
 
+export type TopicProgress = {
+  topicId: string;
+  state: LearningState;
+  confidence: number;
+  checkpoints: Record<CheckpointKey, boolean>;
+  important: boolean;
+  confusing: boolean;
+  lastActivity?: string;
+  completedAt?: string;
+};
+
+export type ActivityRecord = {
+  id: string;
+  timestamp: string;
+  action:
+    | 'topic_started'
+    | 'checkpoint_completed'
+    | 'topic_completed'
+    | 'confidence_updated'
+    | 'revision_completed'
+    | 'study_session_completed'
+    | 'note_added'
+    | 'task_completed';
+  subjectId?: string;
+  moduleId?: string;
+  topicId?: string;
+  taskId?: string;
+  metadata?: Record<string, unknown>;
+};
+
 export type UserPreferences = {
   theme: 'dark' | 'light';
   onboardingComplete: boolean;
@@ -134,11 +164,15 @@ export type UserPreferences = {
 
 export type OrbitData = {
   schemaVersion: number;
+  activeSemesterId?: string;
+  semesters?: Semester[];
   semester: Semester;
+  topicProgress: Record<string, TopicProgress>;
   tasks: StudyTask[];
   revisions: Revision[];
   notes: Note[];
   sessions: StudySession[];
+  activity: ActivityRecord[];
   streak: {
     current: number;
     lastStudyDate?: string;

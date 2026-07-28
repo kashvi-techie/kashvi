@@ -38,12 +38,16 @@ export async function extractSyllabusText(text: string): Promise<ExtractedSyllab
 
 export function extractedToOrbitData(extracted: ExtractedSyllabus, preferences: OrbitData['preferences']): OrbitData {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
+    activeSemesterId: extracted.semester.id,
+    semesters: [extracted.semester],
     semester: extracted.semester,
+    topicProgress: {},
     tasks: [],
     revisions: [],
     notes: [],
     sessions: [],
+    activity: [],
     streak: { current: 0 },
     preferences: { ...preferences, onboardingComplete: true, setupMethod: 'import' },
   };
@@ -119,13 +123,14 @@ function buildExtraction(raw: string, provider: ExtractedSyllabus['provider'], w
   const subjectBlocks = detectSubjectBlocks(text);
   const subjects = subjectBlocks.length ? subjectBlocks.map(blockToSubject) : [blockToSubject({ heading: 'Imported Subject', body: text, index: 0 })];
   const semester: Semester = {
-    id: makeId('semester'),
+    id: stableId('semester', semesterTitle),
     title: semesterTitle,
     program: 'Imported syllabus',
     subjects,
     createdAt: new Date().toISOString(),
     templateSource: 'import',
   };
+  applyStableHierarchyIds(semester);
   const stats = calculateSyllabusStats(semester);
   return {
     semester,
@@ -309,4 +314,36 @@ function normalizeText(text: string) {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/([a-z])([A-Z][a-z])/g, '$1\n$2')
     .trim();
+}
+
+export function normalizeForMatch(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\b(i|1st|one)\b/g, '1')
+    .replace(/\b(ii|2nd|two)\b/g, '2')
+    .replace(/\b(iii|3rd|three)\b/g, '3')
+    .replace(/\b(iv|4th|four)\b/g, '4')
+    .replace(/\b(v|5th|five)\b/g, '5')
+    .replace(/\b(module|unit|part)\s+/g, 'module ')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+function stableId(prefix: string, ...parts: string[]) {
+  return `${prefix}-${normalizeForMatch(parts.filter(Boolean).join('-')) || 'imported'}`;
+}
+
+function applyStableHierarchyIds(semester: Semester) {
+  semester.subjects.forEach((subject) => {
+    const subjectSeed = subject.code !== 'IMPORT' ? subject.code : subject.name;
+    subject.id = stableId(semester.id, subjectSeed);
+    subject.modules.forEach((module, moduleIndex) => {
+      module.id = stableId(subject.id, module.title || `module-${moduleIndex + 1}`);
+      module.topics.forEach((topic) => {
+        topic.id = stableId(module.id, topic.title);
+        topic.subtopics = topic.subtopics.map((subtopic) => ({ ...subtopic, id: stableId(topic.id, subtopic.title) }));
+      });
+    });
+  });
 }

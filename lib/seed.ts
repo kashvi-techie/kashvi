@@ -1,6 +1,6 @@
-import { CheckpointKey, LearningState, Module, OrbitData, Subject, Topic } from './types';
+import { CheckpointKey, LearningState, Module, OrbitData, Subject, Topic, TopicProgress } from './types';
 
-export const STORAGE_SCHEMA_VERSION = 2;
+export const STORAGE_SCHEMA_VERSION = 3;
 const today = new Date();
 const checkpointLabels: Record<CheckpointKey, string> = {
   concept: 'Concept understood',
@@ -221,13 +221,18 @@ function resetSubjectProgress(subject: Subject): Subject {
 }
 
 export function createEmptyData(): OrbitData {
+  const semester = { id: 'semester-current', title: 'My Semester', program: 'Academic program', subjects: [], createdAt: today.toISOString(), templateSource: 'manual' as const };
   return {
     schemaVersion: STORAGE_SCHEMA_VERSION,
-    semester: { id: 'semester-current', title: 'My Semester', program: 'Academic program', subjects: [], createdAt: today.toISOString(), templateSource: 'manual' },
+    activeSemesterId: semester.id,
+    semesters: [semester],
+    semester,
+    topicProgress: {},
     tasks: [],
     revisions: [],
     notes: [],
     sessions: [],
+    activity: [],
     streak: { current: 0 },
     preferences: { theme: 'dark', onboardingComplete: false, workStyle: 'Daily balanced plan', dailyTime: '1 hour' },
   };
@@ -235,11 +240,32 @@ export function createEmptyData(): OrbitData {
 
 export function createTemplateData(): OrbitData {
   const subjects = buildTemplateSubjects().map(resetSubjectProgress);
+  const semester = { id: 'sem-3', title: 'Semester III', program: 'B.Tech CSE AIML', subjects, createdAt: today.toISOString(), templateSource: 'btech-cse-aiml' as const };
   return {
     ...createEmptyData(),
-    semester: { id: 'sem-3', title: 'Semester III', program: 'B.Tech CSE AIML', subjects, createdAt: today.toISOString(), templateSource: 'btech-cse-aiml' },
+    activeSemesterId: semester.id,
+    semesters: [semester],
+    semester,
+    topicProgress: buildTopicProgress(subjects),
     preferences: { theme: 'dark', onboardingComplete: false, setupMethod: 'template', workStyle: 'Daily balanced plan', dailyTime: '1 hour', focusModeSubjectId: 'dsa' },
   };
+}
+
+function buildTopicProgress(subjects: Subject[]): Record<string, TopicProgress> {
+  const entries: Record<string, TopicProgress> = {};
+  subjects.forEach((subject) => subject.modules.forEach((module) => module.topics.forEach((topic) => {
+    entries[topic.id] = {
+      topicId: topic.id,
+      state: topic.state,
+      confidence: topic.confidence,
+      checkpoints: Object.fromEntries(topic.checkpoints.map((checkpoint) => [checkpoint.key, checkpoint.completed])) as TopicProgress['checkpoints'],
+      important: !!topic.important,
+      confusing: !!topic.confusing,
+      lastActivity: topic.lastActivity,
+      completedAt: topic.state === 'completed' ? today.toISOString() : undefined,
+    };
+  })));
+  return entries;
 }
 
 export const createInitialData = createEmptyData;

@@ -23,7 +23,7 @@ Open the local URL printed by Next.js.
 
 ## Persistence
 
-ORBIT uses device-local `localStorage` through Zustand persist. Storage is versioned with `schemaVersion` and normalized on load so missing or older data falls back safely instead of breaking the app.
+ORBIT uses device-local `localStorage` through Zustand persist. Storage is versioned with `schemaVersion` and normalized on load so missing or older data falls back safely instead of breaking the app. Current app state is stored under `orbit-semester-os`; automatic backups are indexed under `orbit-backups` with individual `orbit-backup-<timestamp>` records.
 
 Persisted data includes:
 
@@ -37,6 +37,8 @@ Persisted data includes:
 - notes
 - revisions
 - study sessions
+- topic progress records
+- activity history records
 - streak metadata
 - user preferences
 
@@ -94,7 +96,7 @@ extractSyllabus(file)
 
 The first provider uses client-side PDF text extraction plus rule-based processing for common university syllabus formats. It is intentionally exposed behind `SyllabusParserProvider`, so an LLM provider such as Gemini, OpenAI or Claude can enhance extraction later without changing the onboarding or review UI.
 
-Imported data is not saved immediately. ORBIT always shows a structured review screen first, and the semester is generated only after confirmation.
+Imported data is not saved immediately. ORBIT always shows a structured review screen first. Users can add as a new semester, merge into the current semester while preserving matched progress, or explicitly replace the current semester by typing `REPLACE`. Every import path creates a timestamped local backup first.
 
 ## Testing Checklist
 

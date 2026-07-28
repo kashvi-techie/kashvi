@@ -4,30 +4,34 @@ export const activeSubjects = (data: OrbitData) => data.semester.subjects.filter
 export const allTopics = (subject: Subject) => subject.modules.flatMap((module) => module.topics);
 export const allSubtopics = (subject: Subject) => allTopics(subject).flatMap((topic) => topic.subtopics);
 
-export function topicCompletion(topic: Topic) {
-  const topicChecks = topic.checkpoints.filter((checkpoint) => checkpoint.completed).length;
-  const subtopicChecks = topic.subtopics.flatMap((subtopic) => subtopic.checkpoints).filter((checkpoint) => checkpoint.completed).length;
-  const totalChecks = topic.checkpoints.length + topic.subtopics.length * 5;
-  const stateBonus = topic.state === 'completed' ? 1 : topic.state === 'practising' ? 0.65 : topic.state === 'learning' ? 0.28 : 0;
-  return Math.round(((topicChecks + subtopicChecks) / Math.max(totalChecks, 1) * 0.72 + stateBonus * 0.28) * 100);
+export function getTopicProgress(data: OrbitData, topic: Topic) {
+  return data.topicProgress?.[topic.id];
 }
 
-export function subjectProgress(subject: Subject) {
+export function topicCompletion(topic: Topic, data?: OrbitData) {
+  const progress = data ? getTopicProgress(data, topic) : undefined;
+  const topicChecks = progress ? Object.values(progress.checkpoints).filter(Boolean).length : topic.checkpoints.filter((checkpoint) => checkpoint.completed).length;
+  const subtopicChecks = topic.subtopics.flatMap((subtopic) => subtopic.checkpoints).filter((checkpoint) => checkpoint.completed).length;
+  const totalChecks = topic.checkpoints.length + topic.subtopics.length * 5;
+  return Math.round(((topicChecks + subtopicChecks) / Math.max(totalChecks, 1)) * 100);
+}
+
+export function subjectProgress(subject: Subject, data?: OrbitData) {
   const topics = allTopics(subject);
   if (!topics.length) return { percentage: 0, completed: 0, total: 0, currentModule: 'No modules yet' };
-  const percentage = Math.round(topics.reduce((sum, topic) => sum + topicCompletion(topic), 0) / Math.max(topics.length, 1));
+  const percentage = Math.round(topics.reduce((sum, topic) => sum + topicCompletion(topic, data), 0) / Math.max(topics.length, 1));
   return {
     percentage,
-    completed: topics.filter((topic) => topic.state === 'completed' && topic.checkpoints.every((checkpoint) => checkpoint.completed)).length,
+    completed: topics.filter((topic) => (data?.topicProgress?.[topic.id]?.state ?? topic.state) === 'completed' && topicCompletion(topic, data) === 100).length,
     total: topics.length,
-    currentModule: subject.modules.find((module) => module.topics.some((topic) => topic.state !== 'completed'))?.title ?? 'Complete',
+    currentModule: subject.modules.find((module) => module.topics.some((topic) => (data?.topicProgress?.[topic.id]?.state ?? topic.state) !== 'completed'))?.title ?? 'Complete',
   };
 }
 
 export function semesterProgress(data: OrbitData) {
   const subjects = activeSubjects(data);
   if (!subjects.length) return 0;
-  return Math.round(subjects.reduce((sum, subject) => sum + subjectProgress(subject).percentage, 0) / subjects.length);
+  return Math.round(subjects.reduce((sum, subject) => sum + subjectProgress(subject, data).percentage, 0) / subjects.length);
 }
 
 export function findSubject(data: OrbitData, subjectId: string) {
@@ -108,21 +112,22 @@ export function recommendedNextTask(data: OrbitData, currentSubjectId?: string) 
   }
 
   const subjects = activeSubjects(data);
-  const inProgress = subjects.flatMap((subject) => allTopics(subject).map((topic) => ({ subject, topic }))).find(({ topic }) => topic.state === 'learning' || topic.state === 'practising');
+  const inProgress = subjects.flatMap((subject) => allTopics(subject).map((topic) => ({ subject, topic, progress: data.topicProgress?.[topic.id] }))).find(({ topic, progress }) => (progress?.state ?? topic.state) === 'learning' || (progress?.state ?? topic.state) === 'practising');
   if (inProgress) {
+    const state = inProgress.progress?.state ?? inProgress.topic.state;
     return {
-      title: `${inProgress.topic.state === 'practising' ? 'Practise' : 'Learn'} ${inProgress.topic.title}`,
+      title: `${state === 'practising' ? 'Practise' : 'Learn'} ${inProgress.topic.title}`,
       subjectId: inProgress.subject.id,
       topicId: inProgress.topic.id,
-      actionType: inProgress.topic.state === 'practising' ? 'Practise' as const : 'Learn' as const,
+      actionType: state === 'practising' ? 'Practise' as const : 'Learn' as const,
       estimatedMinutes: inProgress.topic.estimatedMinutes,
-      reason: `Recommended because ${inProgress.topic.title} is currently ${inProgress.topic.state}.`,
+      reason: `Recommended because ${inProgress.topic.title} is currently ${state}.`,
     };
   }
 
   const lowConfidence = subjects
-    .flatMap((subject) => allTopics(subject).filter((topic) => topic.state !== 'completed').map((topic) => ({ subject, topic })))
-    .sort((a, b) => a.topic.confidence - b.topic.confidence)[0];
+    .flatMap((subject) => allTopics(subject).filter((topic) => (data.topicProgress?.[topic.id]?.state ?? topic.state) !== 'completed').map((topic) => ({ subject, topic, progress: data.topicProgress?.[topic.id] })))
+    .sort((a, b) => (a.progress?.confidence ?? a.topic.confidence) - (b.progress?.confidence ?? b.topic.confidence))[0];
   if (lowConfidence) {
     return {
       title: `Learn ${lowConfidence.topic.title}`,
@@ -130,12 +135,12 @@ export function recommendedNextTask(data: OrbitData, currentSubjectId?: string) 
       topicId: lowConfidence.topic.id,
       actionType: 'Learn' as const,
       estimatedMinutes: lowConfidence.topic.estimatedMinutes,
-      reason: `Recommended because your confidence is ${lowConfidence.topic.confidence}/5.`,
+      reason: `Recommended because your confidence is ${lowConfidence.progress?.confidence ?? lowConfidence.topic.confidence}/5.`,
     };
   }
 
   const current = subjects.find((subject) => subject.id === currentSubjectId) ?? subjects[0];
-  const next = current ? allTopics(current).find((topic) => topic.state === 'not-started') : undefined;
+  const next = current ? allTopics(current).find((topic) => (data.topicProgress?.[topic.id]?.state ?? topic.state) === 'not-started') : undefined;
   if (current && next) {
     return {
       title: `Learn ${next.title}`,

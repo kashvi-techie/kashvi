@@ -1,6 +1,7 @@
 import { CheckpointKey, LearningState, Module, OrbitData, Subject, Topic } from './types';
 
-const today = new Date('2026-07-27');
+export const STORAGE_SCHEMA_VERSION = 2;
+const today = new Date();
 const checkpointLabels: Record<CheckpointKey, string> = {
   concept: 'Concept understood',
   notes: 'Notes completed',
@@ -39,9 +40,9 @@ function topic(subject: string, title: string, subtopics: string[] = [], state: 
   };
 }
 
-const moduleOf = (id: string, title: string, topics: Topic[]): Module => ({ id, title, topics });
+const moduleOf = (id: string, title: string, topics: Topic[]): Module => ({ id, title, topics, custom: false });
 
-function buildSubjects(): Subject[] {
+function buildTemplateSubjects(): Subject[] {
   return [
     {
       id: 'dsa',
@@ -187,35 +188,58 @@ function buildSubjects(): Subject[] {
   ];
 }
 
-export function createInitialData(): OrbitData {
-  const subjects = buildSubjects();
-  const findTopic = (subjectId: string, topicIdPart: string) => subjects.find((s) => s.id === subjectId)!.modules.flatMap((m) => m.topics).find((t) => t.id.includes(topicIdPart))!;
-  const dsaIntro = findTopic('dsa', 'introduction');
-  const react = findTopic('frontend', 'react');
-  const node = findTopic('backend', 'node-js');
-  const statsIntro = findTopic('probability', 'introduction');
+function resetSubjectProgress(subject: Subject): Subject {
   return {
-    semester: { id: 'sem-3', title: 'Semester III', program: 'B.Tech CSE AIML', subjects },
-    tasks: [
-      { id: 'task-1', subjectId: 'backend', topicId: node.id, title: 'Continue Express routing notes', actionType: 'Learn', estimatedMinutes: 45, priority: 'High', completed: false, order: 0, scheduledFor: dateAfter(0) },
-      { id: 'task-2', subjectId: 'dsa', topicId: dsaIntro.id, title: 'Practise Big-O and Theta examples', actionType: 'Practise', estimatedMinutes: 35, priority: 'High', completed: false, order: 1, scheduledFor: dateAfter(0) },
-      { id: 'task-3', subjectId: 'frontend', topicId: react.id, title: 'Revise React props and forms', actionType: 'Revise', estimatedMinutes: 30, priority: 'Medium', completed: false, order: 2, scheduledFor: dateAfter(0) },
-      { id: 'task-4', subjectId: 'probability', topicId: statsIntro.id, title: 'Start measurement scales', actionType: 'Learn', estimatedMinutes: 25, priority: 'Medium', completed: false, order: 3, scheduledFor: dateAfter(0) },
-    ],
-    revisions: [
-      { id: 'rev-1', subjectId: 'frontend', topicId: react.id, round: 1, dueDate: dateAfter(0) },
-      { id: 'rev-2', subjectId: 'backend', topicId: node.id, round: 1, dueDate: dateAfter(-1) },
-      { id: 'rev-3', subjectId: 'frontend', topicId: findTopic('frontend', 'css').id, round: 2, dueDate: dateAfter(3) },
-    ],
-    notes: [
-      { id: 'note-1', title: 'React state architecture', body: 'Keep component state local until multiple siblings need it. Then lift state or use a small store.', subjectId: 'frontend', topicId: react.id, important: true, confusing: false, updatedAt: dateAfter(-1) },
-      { id: 'note-2', title: 'Big-O intuition', body: '`O(n log n)` usually appears when work is split and merged or when each step halves a search space.', subjectId: 'dsa', topicId: dsaIntro.id, important: false, confusing: true, updatedAt: dateAfter(-2) },
-    ],
-    sessions: [
-      { id: 'session-1', subjectId: 'frontend', topicId: react.id, minutes: 50, completedAt: dateAfter(-1) },
-      { id: 'session-2', subjectId: 'backend', topicId: node.id, minutes: 40, completedAt: dateAfter(-2) },
-      { id: 'session-3', subjectId: 'frontend', minutes: 70, completedAt: dateAfter(-4) },
-    ],
-    preferences: { theme: 'dark', onboardingComplete: false, workStyle: 'Daily balanced plan', dailyTime: '1 hour', focusModeSubjectId: 'backend' },
+    ...subject,
+    totalStudyHours: 0,
+    assessmentReadiness: 0,
+    templateSource: 'btech-cse-aiml',
+    modules: subject.modules.map((module) => ({
+      ...module,
+      topics: module.topics.map((topic) => ({
+        ...topic,
+        state: 'not-started',
+        confidence: 1,
+        important: false,
+        confusing: false,
+        lastActivity: undefined,
+        dueDate: undefined,
+        checkpoints: topic.checkpoints.map((checkpoint) => ({ ...checkpoint, completed: false })),
+        subtopics: topic.subtopics.map((subtopic) => ({
+          ...subtopic,
+          state: 'not-started',
+          confidence: 1,
+          important: false,
+          confusing: false,
+          checkpoints: subtopic.checkpoints.map((checkpoint) => ({ ...checkpoint, completed: false })),
+        })),
+        resources: [],
+        codingQuestions: [],
+      })),
+    })),
   };
 }
+
+export function createEmptyData(): OrbitData {
+  return {
+    schemaVersion: STORAGE_SCHEMA_VERSION,
+    semester: { id: 'semester-current', title: 'My Semester', program: 'Academic program', subjects: [], createdAt: today.toISOString(), templateSource: 'manual' },
+    tasks: [],
+    revisions: [],
+    notes: [],
+    sessions: [],
+    streak: { current: 0 },
+    preferences: { theme: 'dark', onboardingComplete: false, workStyle: 'Daily balanced plan', dailyTime: '1 hour' },
+  };
+}
+
+export function createTemplateData(): OrbitData {
+  const subjects = buildTemplateSubjects().map(resetSubjectProgress);
+  return {
+    ...createEmptyData(),
+    semester: { id: 'sem-3', title: 'Semester III', program: 'B.Tech CSE AIML', subjects, createdAt: today.toISOString(), templateSource: 'btech-cse-aiml' },
+    preferences: { theme: 'dark', onboardingComplete: false, setupMethod: 'template', workStyle: 'Daily balanced plan', dailyTime: '1 hour', focusModeSubjectId: 'dsa' },
+  };
+}
+
+export const createInitialData = createEmptyData;

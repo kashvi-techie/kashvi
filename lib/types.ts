@@ -5,6 +5,7 @@ export type ActionType = 'Learn' | 'Code' | 'Practise' | 'Revise' | 'Notes' | 'A
 export type Priority = 'Low' | 'Medium' | 'High';
 export type RevisionStatus = 'due' | 'overdue' | 'upcoming' | 'completed';
 export type AppPage = 'overview' | 'subjects' | 'today' | 'revision' | 'practice' | 'analytics' | 'notes' | 'settings';
+export type SetupMethod = 'template' | 'manual' | 'import';
 
 export type CheckpointKey = 'concept' | 'notes' | 'code' | 'questions' | 'revision';
 
@@ -48,6 +49,7 @@ export type Module = {
   id: string;
   title: string;
   topics: Topic[];
+  custom?: boolean;
 };
 
 export type Subject = {
@@ -61,6 +63,8 @@ export type Subject = {
   totalStudyHours: number;
   assessmentReadiness: number;
   custom?: boolean;
+  archived?: boolean;
+  templateSource?: 'btech-cse-aiml' | 'manual' | 'import';
 };
 
 export type Semester = {
@@ -68,6 +72,8 @@ export type Semester = {
   title: string;
   program: string;
   subjects: Subject[];
+  createdAt: string;
+  templateSource?: 'btech-cse-aiml' | 'manual' | 'import';
 };
 
 export type StudyTask = {
@@ -120,16 +126,22 @@ export type StudySession = {
 export type UserPreferences = {
   theme: 'dark' | 'light';
   onboardingComplete: boolean;
+  setupMethod?: SetupMethod;
   workStyle: 'One topic at a time' | 'Daily balanced plan' | 'Exam sprint' | 'Project-focused';
   dailyTime: '30 minutes' | '1 hour' | '2 hours' | 'Flexible';
   focusModeSubjectId?: string;
 };
 
 export type OrbitData = {
+  schemaVersion: number;
   semester: Semester;
   tasks: StudyTask[];
   revisions: Revision[];
   notes: Note[];
   sessions: StudySession[];
+  streak: {
+    current: number;
+    lastStudyDate?: string;
+  };
   preferences: UserPreferences;
 };

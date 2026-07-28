@@ -9,6 +9,7 @@ import {
   CircleDot,
   ClipboardList,
   Command,
+  Copy,
   Download,
   Focus,
   Gauge,
@@ -31,7 +32,8 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { findSubject, findTopic, revisionStatus, searchData, semesterProgress, subjectProgress, topicCompletion } from '@/lib/progress';
+import { activeSubjects, findSubject, findTopic, getStudyStreak, recommendedNextTask, revisionStatus, searchData, semesterProgress, subjectProgress, topicCompletion, weeklyActivity } from '@/lib/progress';
+import { parsePlainTextSyllabus, parseSyllabus } from '@/lib/syllabusImport';
 import { AppPage, LearningState, Note, OrbitData, StudyTask, Subject } from '@/lib/types';
 import { useOrbitStore } from '@/store/useOrbitStore';
 
@@ -68,6 +70,12 @@ export function OrbitApp() {
     document.documentElement.dataset.theme = data.preferences.theme;
   }, [data.preferences.theme]);
 
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen text-[var(--text)]">
       <AnimatePresence>{!data.preferences.onboardingComplete && <Onboarding />}</AnimatePresence>
@@ -92,7 +100,7 @@ function AppFrame() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="min-w-0 flex-1 pb-24 lg:pb-0 lg:pl-72">
+      <main className="min-w-0 flex-1 pb-24 md:pb-0 md:pl-20 lg:pl-72">
         <TopBar />
         <div className="mx-auto max-w-[1540px] px-4 pb-10 pt-4 sm:px-6 lg:px-8">
           <AnimatePresence mode="wait">
@@ -124,12 +132,12 @@ function Sidebar() {
   const progress = semesterProgress(data);
 
   return (
-    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-72 border-r border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] px-4 py-5 backdrop-blur-xl lg:block">
+    <aside className="fixed left-0 top-0 z-30 hidden h-screen w-20 border-r border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] px-3 py-5 backdrop-blur-xl md:block lg:w-72 lg:px-4">
       <div className="mb-8 flex items-center gap-3 px-2">
         <div className="grid h-10 w-10 place-items-center rounded-2xl border border-[var(--border)] bg-[var(--accent-soft)] text-[var(--accent)] shadow-glow">
           <CircleDot size={20} />
         </div>
-        <div>
+        <div className="hidden lg:block">
           <div className="text-sm font-semibold tracking-wide">ORBIT</div>
           <div className="text-xs text-[var(--muted)]">Semester Operating System</div>
         </div>
@@ -143,14 +151,14 @@ function Sidebar() {
               <div key={item.page}>
                 <button type="button" onClick={() => { setPage('subjects'); setSubjectsOpen(!subjectsOpen); }} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${active ? 'bg-[var(--accent-soft)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-white/[0.04] hover:text-[var(--text)]'}`}>
                   <Icon size={17} />
-                  <span className="flex-1 text-left">{item.label}</span>
-                  <ChevronDown size={15} className={`transition ${subjectsOpen ? 'rotate-180' : ''}`} />
+                  <span className="hidden flex-1 text-left lg:block">{item.label}</span>
+                  <ChevronDown size={15} className={`hidden transition lg:block ${subjectsOpen ? 'rotate-180' : ''}`} />
                 </button>
                 <AnimatePresence>
                   {subjectsOpen && (
                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
                       <div className="ml-6 mt-1 space-y-1 border-l border-[var(--border)] pl-3">
-                        {data.semester.subjects.map((subject) => (
+                        {activeSubjects(data).map((subject) => (
                           <button key={subject.id} type="button" onClick={() => setSubject(subject.id)} className={`block w-full rounded-lg px-2 py-2 text-left text-xs transition ${activeSubjectId === subject.id && activePage === 'subjects' ? 'bg-white/[0.06] text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>
                             {subject.name}
                           </button>
@@ -165,14 +173,15 @@ function Sidebar() {
           return (
             <button key={item.page} type="button" onClick={() => setPage(item.page)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${active ? 'bg-[var(--accent-soft)] text-[var(--text)]' : 'text-[var(--muted)] hover:bg-white/[0.04] hover:text-[var(--text)]'}`}>
               <Icon size={17} />
-              {item.label}
+              <span className="hidden lg:inline">{item.label}</span>
             </button>
           );
         })}
       </nav>
-      <div className="absolute bottom-5 left-4 right-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div className="absolute bottom-5 left-3 right-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 lg:left-4 lg:right-4 lg:p-4">
         <div className="mb-3 flex items-center justify-between text-xs text-[var(--muted)]">
-          <span>Semester progress</span>
+          <span className="hidden lg:inline">Semester progress</span>
+          <span className="lg:hidden">Progress</span>
           <span>{progress}%</span>
         </div>
         <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
@@ -190,8 +199,8 @@ function TopBar() {
   const addTask = useOrbitStore((state) => state.addTask);
   const data = useOrbitStore((state) => state.data);
   const title = navItems.find((item) => item.page === activePage)?.label ?? 'Overview';
-  const streak = 8;
-  const firstSubject = data.semester.subjects[0];
+  const streak = getStudyStreak(data);
+  const recommendation = recommendedNextTask(data, data.preferences.focusModeSubjectId);
 
   return (
     <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_84%,transparent)] px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
@@ -206,7 +215,7 @@ function TopBar() {
           Search subjects, modules, topics...
           <Command size={13} className="ml-auto" />
         </button>
-        <button type="button" onClick={() => addTask({ subjectId: firstSubject.id, title: 'Quick captured study task', actionType: 'Learn', estimatedMinutes: 25, priority: 'Medium', scheduledFor: new Date().toISOString().slice(0, 10) })} className="hidden items-center gap-2 rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white transition hover:brightness-110 sm:flex">
+        <button type="button" onClick={() => recommendation.subjectId && addTask({ subjectId: recommendation.subjectId, topicId: recommendation.topicId, title: recommendation.title, actionType: recommendation.actionType, estimatedMinutes: recommendation.estimatedMinutes, priority: 'Medium', scheduledFor: new Date().toISOString().slice(0, 10) })} className="hidden items-center gap-2 rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white transition hover:brightness-110 disabled:opacity-50 sm:flex" disabled={!recommendation.subjectId}>
           <Plus size={16} />
           Quick Add
         </button>
@@ -215,7 +224,7 @@ function TopBar() {
         </button>
         <div className="hidden items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)] sm:flex">
           <Sparkles size={15} className="text-[var(--warning)]" />
-          {streak} day streak
+          {streak > 0 ? `${streak} day streak` : 'Your streak begins today'}
         </div>
         <div className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--border)] bg-[var(--elevated)] text-sm font-semibold">A</div>
       </div>
@@ -227,7 +236,7 @@ function MobileNav() {
   const activePage = useOrbitStore((state) => state.activePage);
   const setPage = useOrbitStore((state) => state.setPage);
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_91%,transparent)] px-2 py-2 backdrop-blur-xl lg:hidden">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_91%,transparent)] px-2 py-2 backdrop-blur-xl md:hidden">
       {navItems.slice(0, 5).map((item) => {
         const Icon = item.icon;
         const active = activePage === item.page;
@@ -248,33 +257,37 @@ function OverviewPage() {
   const startFocus = useOrbitStore((state) => state.startFocus);
   const progress = semesterProgress(data);
   const tasks = todaysTasks(data);
-  const nextTask = tasks.find((task) => !task.completed) ?? tasks[0];
-  const focusSubject = findSubject(data, nextTask?.subjectId ?? 'backend') ?? data.semester.subjects[0];
-  const topic = findTopic(data, nextTask?.topicId)?.topic;
-  const subjectRows = data.semester.subjects.map((subject) => ({ subject, ...subjectProgress(subject) }));
+  const recommendation = recommendedNextTask(data, data.preferences.focusModeSubjectId);
+  const focusSubject = findSubject(data, recommendation.subjectId) ?? activeSubjects(data)[0];
+  const topic = findTopic(data, recommendation.topicId)?.topic;
+  const subjectRows = activeSubjects(data).map((subject) => ({ subject, ...subjectProgress(subject) }));
   const revisions = data.revisions.filter((revision) => ['due', 'overdue'].includes(revisionStatus(revision))).slice(0, 4);
+  const activity = weeklyActivity(data);
+  const hasActivity = activity.some((day) => day.minutes > 0 || day.topics > 0 || day.questions > 0);
+  const momentum = getMomentumLines(data);
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-      <section className="panel overflow-hidden p-5 sm:p-7">
-        <div className="flex flex-col gap-6 xl:flex-row xl:items-center">
+      <section className="panel overflow-hidden p-4 sm:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
           <div className="flex-1">
-            <div className="mb-5 inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--accent-soft)] px-3 py-1.5 text-xs text-[var(--accent)]">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--accent-soft)] px-3 py-1.5 text-xs text-[var(--accent)]">
               <GraduationCap size={14} />
               {data.semester.title} control room
             </div>
-            <h2 className="max-w-3xl font-serif text-4xl leading-tight sm:text-6xl">Good evening. Your next best move is clear.</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--muted)]">Stay with one meaningful academic action at a time. ORBIT is tracking syllabus progress, revision pressure, practice load and your current momentum.</p>
-            <div className="mt-7 grid gap-3 sm:grid-cols-[1fr_auto]">
+            <h2 className="max-w-3xl font-serif text-3xl leading-tight sm:text-5xl">Good evening. Your next best move is clear.</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--muted)]">ORBIT is calculating your next action from revisions, planned work, topic state and confidence.</p>
+            <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--elevated)] p-4">
                 <div className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">Recommended next task</div>
-                <div className="mt-2 text-lg font-semibold">{nextTask?.title ?? 'Plan your first task'}</div>
-                <div className="mt-2 text-sm text-[var(--muted)]">{focusSubject.name}{topic ? ` -> ${topic.title}` : ''}</div>
+                <div className="mt-2 text-lg font-semibold">{recommendation.title}</div>
+                <div className="mt-2 text-sm text-[var(--muted)]">{focusSubject?.name ?? 'No active subject'}{topic ? ` -> ${topic.title}` : ''}</div>
+                <div className="mt-2 text-xs text-[var(--muted)]">{recommendation.reason}</div>
               </div>
-              <button type="button" onClick={() => startFocus(nextTask?.id)} className="rounded-2xl bg-[var(--accent)] px-5 py-4 text-sm font-semibold text-white transition hover:brightness-110">Continue learning</button>
+              <button type="button" onClick={() => startFocus(tasks.find((task) => task.title === recommendation.title)?.id)} className="rounded-2xl bg-[var(--accent)] px-5 py-4 text-sm font-semibold text-white transition hover:brightness-110">Continue learning</button>
             </div>
           </div>
-          <OrbitVisual subjects={data.semester.subjects} progress={progress} />
+          <OrbitVisual subjects={subjectRows.map((row) => row.subject)} progress={progress} />
         </div>
       </section>
 
@@ -286,7 +299,7 @@ function OverviewPage() {
       <section className="panel p-5 sm:p-6">
         <SectionHeader title="Subject Progress" action="Open roadmap" />
         <div className="space-y-3">
-          {subjectRows.map((row) => (
+          {subjectRows.length ? subjectRows.map((row) => (
             <button key={row.subject.id} type="button" onClick={() => setSubject(row.subject.id)} className="group w-full rounded-xl border border-[var(--border)] bg-white/[0.025] p-3 text-left transition hover:border-[var(--accent)]/30 hover:bg-white/[0.05]">
               <div className="flex items-center gap-3">
                 <span className="h-2.5 w-2.5 rounded-full" style={{ background: row.subject.accent }} />
@@ -298,7 +311,7 @@ function OverviewPage() {
               </div>
               <ProgressBar value={row.percentage} className="mt-3" />
             </button>
-          ))}
+          )) : <EmptyState title="No subjects yet" body="Use the onboarding setup or Settings to add your semester syllabus." />}
         </div>
       </section>
 
@@ -315,8 +328,9 @@ function OverviewPage() {
         <section className="panel p-5 sm:p-6">
           <SectionHeader title="Weekly Activity" action="Study minutes" />
           <div className="h-56">
+            {!hasActivity ? <EmptyState title="No study activity yet" body="Complete a focus session or task to start your weekly graph." /> : (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyActivity(data)}>
+              <AreaChart data={activity}>
                 <defs>
                   <linearGradient id="minutes" x1="0" x2="0" y1="0" y2="1">
                     <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.5} />
@@ -329,14 +343,13 @@ function OverviewPage() {
                 <Area type="monotone" dataKey="minutes" stroke="var(--accent)" fill="url(#minutes)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
         </section>
         <section className="panel p-5 sm:p-6">
           <SectionHeader title="Current Momentum" />
           <div className="grid gap-3 text-sm text-[var(--muted)]">
-            <MomentumLine text="3 topics completed this week" />
-            <MomentumLine text="Backend is your most active subject" />
-            <MomentumLine text="Probability needs attention before the first assessment" />
+            {momentum.length ? momentum.map((line) => <MomentumLine key={line} text={line} />) : <EmptyState title="Your streak begins today" body="No achievements are shown until you create real study history." />}
           </div>
         </section>
       </div>
@@ -345,6 +358,7 @@ function OverviewPage() {
 }
 
 function OrbitVisual({ subjects, progress }: { subjects: Subject[]; progress: number }) {
+  const visibleSubjects = subjects.length ? subjects : [{ id: 'empty', name: 'Add subjects', shortName: 'Start', code: '', credits: 0, accent: '#A78BFA', modules: [], totalStudyHours: 0, assessmentReadiness: 0 }];
   return (
     <div className="relative mx-auto h-80 w-80 shrink-0">
       <div className="absolute inset-8 rounded-full border border-[var(--border)]" />
@@ -355,8 +369,8 @@ function OrbitVisual({ subjects, progress }: { subjects: Subject[]; progress: nu
           <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">Semester</div>
         </div>
       </div>
-      {subjects.map((subject, index) => {
-        const angle = (index / subjects.length) * Math.PI * 2 - Math.PI / 2;
+      {visibleSubjects.map((subject, index) => {
+        const angle = (index / visibleSubjects.length) * Math.PI * 2 - Math.PI / 2;
         const x = 144 + Math.cos(angle) * 126;
         const y = 144 + Math.sin(angle) * 126;
         const percent = subjectProgress(subject).percentage;
@@ -375,15 +389,16 @@ function SubjectPage() {
   const data = useOrbitStore((state) => state.data);
   const activeSubjectId = useOrbitStore((state) => state.activeSubjectId);
   const setSubject = useOrbitStore((state) => state.setSubject);
-  const subject = findSubject(data, activeSubjectId) ?? data.semester.subjects[0];
+  const subject = findSubject(data, activeSubjectId) ?? activeSubjects(data)[0];
   const [tab, setTab] = useState('Roadmap');
+  if (!subject) return <EmptySemester />;
   const progress = subjectProgress(subject);
   const tabs = ['Roadmap', 'Modules', 'Practice', 'Notes', 'Revision', 'Analytics'];
 
   return (
     <div className="space-y-5">
       <div className="flex gap-2 overflow-x-auto pb-1 lg:hidden">
-        {data.semester.subjects.map((item) => <button key={item.id} onClick={() => setSubject(item.id)} className={`whitespace-nowrap rounded-xl border px-3 py-2 text-xs ${item.id === subject.id ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] text-[var(--muted)]'}`}>{item.shortName}</button>)}
+        {activeSubjects(data).map((item) => <button key={item.id} onClick={() => setSubject(item.id)} className={`whitespace-nowrap rounded-xl border px-3 py-2 text-xs ${item.id === subject.id ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] text-[var(--muted)]'}`}>{item.shortName}</button>)}
       </div>
       <section className="panel overflow-hidden p-5 sm:p-7">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -394,9 +409,9 @@ function SubjectPage() {
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric label="Completion" value={`${progress.percentage}%`} />
-            <Metric label="Study hours" value={`${subject.totalStudyHours}h`} />
+            <Metric label="Study hours" value={`${Math.round(data.sessions.filter((session) => session.subjectId === subject.id).reduce((sum, session) => sum + session.minutes, 0) / 60)}h`} />
             <Metric label="Topics done" value={`${progress.completed}/${progress.total}`} />
-            <Metric label="Readiness" value={`${subject.assessmentReadiness}%`} />
+            <Metric label="Readiness" value={`${Math.round((progress.percentage + averageConfidence(subject) * 20) / 2)}%`} />
           </div>
         </div>
         <div className="mt-6">
@@ -404,6 +419,7 @@ function SubjectPage() {
           <div className="mt-2 text-xs text-[var(--muted)]">Current module: {progress.currentModule}</div>
         </div>
       </section>
+      <SubjectManager subject={subject} />
       <div className="flex gap-2 overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-1">
         {tabs.map((item) => <button key={item} type="button" onClick={() => setTab(item)} className={`whitespace-nowrap rounded-xl px-4 py-2 text-sm transition ${tab === item ? 'bg-[var(--elevated)] text-[var(--text)] shadow-soft' : 'text-[var(--muted)] hover:text-[var(--text)]'}`}>{item}</button>)}
       </div>
@@ -453,13 +469,57 @@ function Roadmap({ subject }: { subject: Subject }) {
   );
 }
 
+function EmptySemester() {
+  const setPage = useOrbitStore((state) => state.setPage);
+  return (
+    <section className="panel p-8 text-center">
+      <h2 className="font-serif text-4xl">Build your semester structure</h2>
+      <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-[var(--muted)]">Add subjects manually, use the B.Tech template, or import a syllabus before tracking progress.</p>
+      <button onClick={() => setPage('settings')} className="mt-5 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Open setup</button>
+    </section>
+  );
+}
+
+function SubjectManager({ subject }: { subject: Subject }) {
+  const updateSubject = useOrbitStore((state) => state.updateSubject);
+  const duplicateSubject = useOrbitStore((state) => state.duplicateSubject);
+  const archiveSubject = useOrbitStore((state) => state.archiveSubject);
+  const deleteCustomSubject = useOrbitStore((state) => state.deleteCustomSubject);
+  const [title, setTitle] = useState(subject.name);
+  const [code, setCode] = useState(subject.code);
+  const [credits, setCredits] = useState(String(subject.credits));
+
+  useEffect(() => {
+    setTitle(subject.name);
+    setCode(subject.code);
+    setCredits(String(subject.credits));
+  }, [subject]);
+
+  return (
+    <section className="panel grid gap-3 p-4 md:grid-cols-[1fr_130px_90px_auto]">
+      <input value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => title.trim() && updateSubject(subject.id, { name: title.trim() })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" aria-label="Subject title" />
+      <input value={code} onChange={(event) => setCode(event.target.value)} onBlur={() => updateSubject(subject.id, { code: code.trim() || 'CUSTOM' })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" aria-label="Subject code" />
+      <input value={credits} type="number" min={0} onChange={(event) => setCredits(event.target.value)} onBlur={() => updateSubject(subject.id, { credits: Number(credits) || 0 })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" aria-label="Credits" />
+      <div className="flex gap-2">
+        <button onClick={() => duplicateSubject(subject.id)} className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--border)]" aria-label="Duplicate subject"><Copy size={16} /></button>
+        <button onClick={() => archiveSubject(subject.id)} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Archive</button>
+        {subject.custom && <button onClick={() => deleteCustomSubject(subject.id)} className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--danger)]/40 text-[var(--danger)]" aria-label="Delete custom subject"><Trash2 size={16} /></button>}
+      </div>
+    </section>
+  );
+}
+
 function ModuleView({ subject }: { subject: Subject }) {
   const setTopic = useOrbitStore((state) => state.setTopic);
   const addCustomTopic = useOrbitStore((state) => state.addCustomTopic);
+  const addModule = useOrbitStore((state) => state.addModule);
   const [newTopic, setNewTopic] = useState('');
+  const [newModule, setNewModule] = useState('');
   return (
     <section className="space-y-4">
-      <div className="panel flex flex-col gap-3 p-4 sm:flex-row">
+      <div className="panel grid gap-3 p-4 lg:grid-cols-[1fr_auto_1fr_auto]">
+        <input value={newModule} onChange={(event) => setNewModule(event.target.value)} placeholder="Add module" className="min-w-0 rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+        <button type="button" onClick={() => { addModule(subject.id, newModule); setNewModule(''); }} className="rounded-xl border border-[var(--border)] px-4 py-2 text-sm font-semibold">Add module</button>
         <input value={newTopic} onChange={(event) => setNewTopic(event.target.value)} placeholder="Add a custom topic to this subject" className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
         <button type="button" onClick={() => { addCustomTopic(subject.id, newTopic); setNewTopic(''); }} className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Add topic</button>
       </div>
@@ -499,7 +559,7 @@ function TodayPage() {
         <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Balanced plan: one learning block, one coding/practice block, one revision action and one notes cleanup.</p>
         <div className="mt-6 flex gap-2">
           <input value={capture} onChange={(event) => setCapture(event.target.value)} placeholder="Quick capture a task..." className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
-          <button type="button" onClick={() => { addTask({ subjectId: data.semester.subjects[0].id, title: capture || 'Captured task', actionType: 'Learn', estimatedMinutes: 25, priority: 'Medium', scheduledFor: new Date().toISOString().slice(0, 10) }); setCapture(''); }} className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Capture</button>
+          <button type="button" onClick={() => { const subject = activeSubjects(data)[0]; if (!subject || !capture.trim()) return; addTask({ subjectId: subject.id, title: capture.trim(), actionType: 'Learn', estimatedMinutes: 25, priority: 'Medium', scheduledFor: new Date().toISOString().slice(0, 10) }); setCapture(''); }} className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={!capture.trim() || !activeSubjects(data).length}>Capture</button>
         </div>
       </section>
       <section className="panel p-5 sm:p-6">
@@ -549,7 +609,7 @@ function RevisionPage({ subjectFilter }: { subjectFilter?: string }) {
 function PracticePage({ subjectFilter }: { subjectFilter?: string }) {
   const data = useOrbitStore((state) => state.data);
   const setTopic = useOrbitStore((state) => state.setTopic);
-  const topics = data.semester.subjects.filter((subject) => !subjectFilter || subject.id === subjectFilter).flatMap((subject) => subject.modules.flatMap((module) => module.topics.map((topic) => ({ subject, module, topic })))).filter(({ topic }) => topic.state !== 'completed');
+  const topics = activeSubjects(data).filter((subject) => !subjectFilter || subject.id === subjectFilter).flatMap((subject) => subject.modules.flatMap((module) => module.topics.map((topic) => ({ subject, module, topic })))).filter(({ topic }) => topic.state !== 'completed');
   return (
     <section className="panel p-5 sm:p-6">
       <SectionHeader title="Practice queue" action={`${topics.length} open topics`} />
@@ -568,13 +628,14 @@ function PracticePage({ subjectFilter }: { subjectFilter?: string }) {
 
 function AnalyticsPage() {
   const data = useOrbitStore((state) => state.data);
-  const subjectData = data.semester.subjects.map((subject) => ({ name: subject.shortName, progress: subjectProgress(subject).percentage, hours: subject.totalStudyHours, color: subject.accent }));
-  const states = ['not-started', 'learning', 'practising', 'completed'].map((state) => ({ name: stateLabels[state as LearningState], value: data.semester.subjects.flatMap((subject) => subject.modules.flatMap((module) => module.topics)).filter((topic) => topic.state === state).length }));
+  const subjects = activeSubjects(data);
+  const subjectData = subjects.map((subject) => ({ name: subject.shortName, progress: subjectProgress(subject).percentage, hours: Math.round(data.sessions.filter((session) => session.subjectId === subject.id).reduce((sum, session) => sum + session.minutes, 0) / 60), color: subject.accent }));
+  const states = ['not-started', 'learning', 'practising', 'completed'].map((state) => ({ name: stateLabels[state as LearningState], value: subjects.flatMap((subject) => subject.modules.flatMap((module) => module.topics)).filter((topic) => topic.state === state).length }));
   return (
     <div className="grid gap-5 xl:grid-cols-2">
       <section className="panel p-5 sm:p-6">
         <SectionHeader title="Subject-wise completion" />
-        <div className="h-72"><ResponsiveContainer><BarChart data={subjectData}><XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} /><YAxis hide /><Tooltip contentStyle={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 12 }} /><Bar dataKey="progress" radius={[8, 8, 0, 0]}>{subjectData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Bar></BarChart></ResponsiveContainer></div>
+        <div className="h-72">{subjectData.length ? <ResponsiveContainer><BarChart data={subjectData}><XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} /><YAxis hide /><Tooltip contentStyle={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 12 }} /><Bar dataKey="progress" radius={[8, 8, 0, 0]}>{subjectData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Bar></BarChart></ResponsiveContainer> : <EmptyState title="No analytics yet" body="Add subjects and complete study actions to generate analytics." />}</div>
       </section>
       <section className="panel p-5 sm:p-6">
         <SectionHeader title="Confidence distribution" />
@@ -609,7 +670,7 @@ function NotesPage({ subjectFilter }: { subjectFilter?: string }) {
         <SectionHeader title="Create note" />
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search or title..." className="mb-3 w-full rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
         <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Plain text, markdown-style notes, code blocks or resource links..." className="min-h-44 w-full resize-none rounded-xl border border-[var(--border)] bg-transparent p-3 text-sm" />
-        <button type="button" onClick={() => { addNote({ title: query || 'Untitled note', body: body || 'Empty note', subjectId: subjectFilter ?? data.semester.subjects[0].id, important: false, confusing: false }); setBody(''); }} className="mt-3 w-full rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Save note</button>
+        <button type="button" onClick={() => { const subjectId = subjectFilter ?? activeSubjects(data)[0]?.id; if (!subjectId || !body.trim()) return; addNote({ title: query || 'Untitled note', body, subjectId, important: false, confusing: false }); setBody(''); }} className="mt-3 w-full rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={!body.trim() || !activeSubjects(data).length}>Save note</button>
       </section>
       <section className="panel p-5 sm:p-6">
         <SectionHeader title="Notes library" action={`${notes.length} notes`} />
@@ -628,7 +689,12 @@ function SettingsPage() {
   const importData = useOrbitStore((state) => state.importData);
   const addCustomSubject = useOrbitStore((state) => state.addCustomSubject);
   const updatePreferences = useOrbitStore((state) => state.updatePreferences);
+  const applyTemplate = useOrbitStore((state) => state.useTemplate);
+  const createSemester = useOrbitStore((state) => state.createSemester);
   const [subjectName, setSubjectName] = useState('');
+  const [semesterTitle, setSemesterTitle] = useState(data.semester.title);
+  const [program, setProgram] = useState(data.semester.program);
+  const [importMessage, setImportMessage] = useState('PDF parsing is mocked in development.');
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -644,15 +710,33 @@ function SettingsPage() {
         <SectionHeader title="Data controls" />
         <div className="grid gap-3">
           <button type="button" onClick={exportData} className="flex items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-left text-sm"><Download size={16} /> Export all data as JSON</button>
-          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-sm"><Import size={16} /> Import JSON<input type="file" accept="application/json" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (file) importData(JSON.parse(await file.text()) as OrbitData); }} /></label>
-          <button type="button" onClick={resetProgress} className="flex items-center gap-2 rounded-xl border border-[var(--danger)]/35 p-3 text-left text-sm text-[var(--danger)]"><RotateCcw size={16} /> Reset progress</button>
+          <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] p-3 text-sm"><Import size={16} /> Import JSON<input type="file" accept="application/json" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; if (!confirm('Importing JSON will replace current ORBIT data. Continue?')) { event.target.value = ''; return; } try { importData(JSON.parse(await file.text()) as OrbitData); setImportMessage('JSON import completed.'); } catch { setImportMessage('That JSON file could not be read safely.'); } }} /></label>
+          <button type="button" onClick={() => confirm('Reset all local ORBIT data?') && resetProgress()} className="flex items-center gap-2 rounded-xl border border-[var(--danger)]/35 p-3 text-left text-sm text-[var(--danger)]"><RotateCcw size={16} /> Reset progress</button>
         </div>
       </section>
       <section className="panel p-5 sm:p-6">
         <SectionHeader title="Semester structure" />
-        <div className="flex gap-2">
+        <div className="grid gap-2">
+          <input value={semesterTitle} onChange={(event) => setSemesterTitle(event.target.value)} placeholder="Semester title" className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+          <input value={program} onChange={(event) => setProgram(event.target.value)} placeholder="Program" className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => confirm('Create a new manual semester and clear current ORBIT data?') && createSemester(semesterTitle, program)} className="flex-1 rounded-xl border border-[var(--border)] px-4 py-2 text-sm">Build manually</button>
+            <button type="button" onClick={() => confirm('Use the B.Tech template and clear current ORBIT data?') && applyTemplate(semesterTitle)} className="flex-1 rounded-xl border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-2 text-sm text-[var(--accent)]">Use B.Tech template</button>
+          </div>
+        </div>
+        <div className="mt-4 flex gap-2">
           <input value={subjectName} onChange={(event) => setSubjectName(event.target.value)} placeholder="Add custom subject" className="min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
           <button type="button" onClick={() => { addCustomSubject(subjectName); setSubjectName(''); }} className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">Add</button>
+        </div>
+      </section>
+      <section className="panel p-5 sm:p-6 xl:col-span-2">
+        <SectionHeader title="Syllabus import" action="Mocked PDF parser" />
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr]">
+          <label className="rounded-2xl border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted)]">
+            Upload PDF syllabus
+            <input type="file" accept="application/pdf" className="mt-3 block w-full text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const result = await parseSyllabus(file); setImportMessage(result.warnings.join(' ')); } }} />
+          </label>
+          <div className="rounded-2xl border border-[var(--warning)]/35 bg-[rgba(215,174,104,0.1)] p-4 text-sm text-[var(--warning)]">{importMessage}</div>
         </div>
       </section>
       <section className="panel p-5 sm:p-6 xl:col-span-2">
@@ -674,11 +758,13 @@ function TopicPanel() {
   const updateTopicMeta = useOrbitStore((state) => state.updateTopicMeta);
   const addResource = useOrbitStore((state) => state.addResource);
   const addCodingQuestion = useOrbitStore((state) => state.addCodingQuestion);
+  const addSubtopic = useOrbitStore((state) => state.addSubtopic);
   const addNote = useOrbitStore((state) => state.addNote);
   const deleteCustomTopic = useOrbitStore((state) => state.deleteCustomTopic);
   const found = findTopic(data, topicId);
   const [resource, setResource] = useState('');
   const [question, setQuestion] = useState('');
+  const [subtopic, setSubtopic] = useState('');
   const [personalNote, setPersonalNote] = useState('');
 
   return (
@@ -727,6 +813,9 @@ function TopicPanel() {
             <button onClick={() => { addResource(found.topic.id, resource); setResource(''); }} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Add resource</button>
             <input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Add coding/practice question" className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
             <button onClick={() => { addCodingQuestion(found.topic.id, question); setQuestion(''); }} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Add question</button>
+            <input value={subtopic} onChange={(event) => setSubtopic(event.target.value)} placeholder="Add subtopic" className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+            <button onClick={() => { addSubtopic(found.topic.id, subtopic); setSubtopic(''); }} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Add subtopic</button>
+            {!!found.topic.subtopics.length && <div className="rounded-xl border border-[var(--border)] p-3 text-sm text-[var(--muted)]">{found.topic.subtopics.map((item) => item.title).join(', ')}</div>}
             <textarea value={personalNote} onChange={(event) => setPersonalNote(event.target.value)} placeholder="Add personal note..." className="min-h-24 resize-none rounded-xl border border-[var(--border)] bg-transparent p-3 text-sm" />
             <button onClick={() => { addNote({ title: `${found.topic.title} note`, body: personalNote || 'Topic note', subjectId: found.subject.id, moduleId: found.module.id, topicId: found.topic.id, important: !!found.topic.important, confusing: !!found.topic.confusing }); setPersonalNote(''); }} className="rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Save note</button>
             {found.topic.custom && <button onClick={() => deleteCustomTopic(found.topic.id)} className="flex items-center justify-center gap-2 rounded-xl border border-[var(--danger)]/35 px-3 py-2 text-sm text-[var(--danger)]"><Trash2 size={15} /> Delete custom topic</button>}
@@ -805,29 +894,80 @@ function SearchOverlay() {
 
 function Onboarding() {
   const completeOnboarding = useOrbitStore((state) => state.completeOnboarding);
+  const applyTemplate = useOrbitStore((state) => state.useTemplate);
+  const createSemester = useOrbitStore((state) => state.createSemester);
+  const importData = useOrbitStore((state) => state.importData);
   const [step, setStep] = useState(0);
+  const [semesterTitle, setSemesterTitle] = useState('Semester III');
+  const [program, setProgram] = useState('B.Tech CSE AIML');
+  const [setupMethod, setSetupMethod] = useState<'template' | 'manual' | 'import'>('template');
   const [workStyle, setWorkStyle] = useState<'One topic at a time' | 'Daily balanced plan' | 'Exam sprint' | 'Project-focused'>('Daily balanced plan');
   const [dailyTime, setDailyTime] = useState<'30 minutes' | '1 hour' | '2 hours' | 'Flexible'>('1 hour');
-  const steps = [
-    <OnboardingStep key="control" title="What are you trying to control?" options={['My whole semester']} selected="My whole semester" onSelect={() => setStep(1)} />,
-    <OnboardingStep key="style" title="How do you want to work?" options={['One topic at a time', 'Daily balanced plan', 'Exam sprint', 'Project-focused']} selected={workStyle} onSelect={(value) => { setWorkStyle(value as typeof workStyle); setStep(2); }} />,
-    <OnboardingStep key="time" title="How much time can you realistically study each day?" options={['30 minutes', '1 hour', '2 hours', 'Flexible']} selected={dailyTime} onSelect={(value) => { setDailyTime(value as typeof dailyTime); completeOnboarding({ workStyle, dailyTime: value as typeof dailyTime }); }} />,
-  ];
+  const finish = () => {
+    if (setupMethod === 'template') {
+      applyTemplate(semesterTitle);
+      completeOnboarding({ setupMethod, workStyle, dailyTime });
+    } else {
+      createSemester(semesterTitle, program);
+      completeOnboarding({ setupMethod, workStyle, dailyTime });
+    }
+  };
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[80] grid place-items-center bg-[var(--bg)] p-5">
-      <div className="w-full max-w-xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-soft">
+      <div className="w-full max-w-2xl rounded-3xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-soft">
         <div className="mb-8 flex items-center justify-between">
           <div><div className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">First launch</div><h1 className="mt-1 text-2xl font-semibold">Tune ORBIT</h1></div>
           <button onClick={() => completeOnboarding()} className="text-sm text-[var(--muted)]">Skip</button>
         </div>
-        {steps[step]}
+        {step === 0 && (
+          <div>
+            <h2 className="font-serif text-4xl">Create or select semester</h2>
+            <div className="mt-6 grid gap-3">
+              <input value={semesterTitle} onChange={(event) => setSemesterTitle(event.target.value)} className="rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" placeholder="Semester title" />
+              <input value={program} onChange={(event) => setProgram(event.target.value)} className="rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" placeholder="Program" />
+              <button onClick={() => setStep(1)} disabled={!semesterTitle.trim()} className="rounded-2xl bg-[var(--accent)] p-4 text-sm font-semibold text-white disabled:opacity-45">Continue</button>
+            </div>
+          </div>
+        )}
+        {step === 1 && <OnboardingStep title="Choose setup method" options={['template', 'manual', 'import']} selected={setupMethod} onSelect={(value) => { setSetupMethod(value as typeof setupMethod); setStep(value === 'import' ? 4 : 2); }} labels={{ template: 'Use B.Tech CSE AIML template', manual: 'Build my semester manually', import: 'Import syllabus' }} />}
+        {step === 2 && <OnboardingStep title="Choose study preference" options={['One topic at a time', 'Daily balanced plan', 'Exam sprint', 'Project-focused']} selected={workStyle} onSelect={(value) => { setWorkStyle(value as typeof workStyle); setStep(3); }} />}
+        {step === 3 && <OnboardingStep title="Choose realistic daily availability" options={['30 minutes', '1 hour', '2 hours', 'Flexible']} selected={dailyTime} onSelect={(value) => { setDailyTime(value as typeof dailyTime); finish(); }} />}
+        {step === 4 && <ImportSetup onImported={(data) => { importData(data); completeOnboarding({ setupMethod: 'import', workStyle, dailyTime }); }} onManual={() => setStep(2)} />}
       </div>
     </motion.div>
   );
 }
 
-function OnboardingStep({ title, options, selected, onSelect }: { title: string; options: string[]; selected: string; onSelect: (value: string) => void }) {
-  return <div><h2 className="font-serif text-4xl">{title}</h2><div className="mt-6 grid gap-3">{options.map((option) => <button key={option} onClick={() => onSelect(option)} className={`rounded-2xl border p-4 text-left text-sm transition ${selected === option ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] hover:bg-white/[0.04]'}`}>{option}</button>)}</div></div>;
+function OnboardingStep({ title, options, selected, onSelect, labels }: { title: string; options: string[]; selected: string; onSelect: (value: string) => void; labels?: Record<string, string> }) {
+  return <div><h2 className="font-serif text-4xl">{title}</h2><div className="mt-6 grid gap-3">{options.map((option) => <button key={option} onClick={() => onSelect(option)} className={`rounded-2xl border p-4 text-left text-sm transition ${selected === option ? 'border-[var(--accent)] bg-[var(--accent-soft)]' : 'border-[var(--border)] hover:bg-white/[0.04]'}`}>{labels?.[option] ?? option}</button>)}</div></div>;
+}
+
+function ImportSetup({ onImported, onManual }: { onImported: (data: OrbitData) => void; onManual: () => void }) {
+  const [message, setMessage] = useState('PDF parsing is mocked in development.');
+  const [paste, setPaste] = useState('');
+  return (
+    <div>
+      <h2 className="font-serif text-4xl">Import syllabus</h2>
+      <p className="mt-3 text-sm text-[var(--muted)]">PDF upload UI is ready, but AI parsing is intentionally mocked until an API is connected.</p>
+      <div className="mt-6 grid gap-3">
+        <label className="rounded-2xl border border-dashed border-[var(--border)] p-4 text-sm text-[var(--muted)]">
+          Upload PDF syllabus
+          <input type="file" accept="application/pdf" className="mt-3 block w-full text-sm" onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const result = await parseSyllabus(file); setMessage(result.warnings.join(' ')); } }} />
+        </label>
+        <textarea value={paste} onChange={(event) => setPaste(event.target.value)} className="min-h-32 rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" placeholder="Or paste plain-text syllabus here..." />
+        <div className="rounded-2xl border border-[var(--warning)]/35 bg-[rgba(215,174,104,0.1)] p-3 text-sm text-[var(--warning)]">{message}</div>
+        <button onClick={() => {
+          const parsed = parsePlainTextSyllabus(paste);
+          if (!parsed.subjects.length) {
+            setMessage(parsed.warnings.join(' '));
+            return;
+          }
+          onImported({ schemaVersion: 2, semester: { id: `semester-${Date.now()}`, title: 'Imported Semester', program: 'Imported syllabus', subjects: parsed.subjects, createdAt: new Date().toISOString(), templateSource: 'import' }, tasks: [], revisions: [], notes: [], sessions: [], streak: { current: 0 }, preferences: { theme: 'dark', onboardingComplete: true, setupMethod: 'import', workStyle: 'Daily balanced plan', dailyTime: '1 hour' } });
+        }} className="rounded-2xl bg-[var(--accent)] p-4 text-sm font-semibold text-white">Import pasted text</button>
+        <button onClick={onManual} className="rounded-2xl border border-[var(--border)] p-4 text-sm">Continue with manual setup</button>
+      </div>
+    </div>
+  );
 }
 
 function TaskList({ tasks }: { tasks: StudyTask[] }) {
@@ -915,7 +1055,26 @@ function todaysTasks(data: OrbitData) {
   return data.tasks.filter((task) => task.scheduledFor === day).sort((a, b) => a.order - b.order);
 }
 
-function weeklyActivity(data: OrbitData) {
-  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  return labels.map((day, index) => ({ day, minutes: data.sessions[index]?.minutes ?? [20, 45, 30, 70, 50, 35, 55][index], topics: index % 2 ? 1 : 0, questions: 8 + index * 2 }));
+function getMomentumLines(data: OrbitData) {
+  const activity = weeklyActivity(data);
+  const completedThisWeek = data.tasks.filter((task) => task.completed && activity.some((day) => day.date === task.scheduledFor)).length;
+  const subjectMinutes = activeSubjects(data)
+    .map((subject) => ({
+      subject,
+      minutes: data.sessions.filter((session) => session.subjectId === subject.id).reduce((sum, session) => sum + session.minutes, 0),
+      progress: subjectProgress(subject).percentage,
+    }))
+    .sort((a, b) => b.minutes - a.minutes);
+  const weakest = subjectMinutes.filter((item) => item.progress < 25).sort((a, b) => a.progress - b.progress)[0];
+  const lines: string[] = [];
+  if (completedThisWeek > 0) lines.push(`${completedThisWeek} study tasks completed this week`);
+  if (subjectMinutes[0]?.minutes > 0) lines.push(`${subjectMinutes[0].subject.shortName} is your most active subject`);
+  if (weakest) lines.push(`${weakest.subject.shortName} needs attention`);
+  return lines;
+}
+
+function averageConfidence(subject: Subject) {
+  const topics = subject.modules.flatMap((module) => module.topics);
+  if (!topics.length) return 0;
+  return topics.reduce((sum, topic) => sum + topic.confidence, 0) / topics.length;
 }

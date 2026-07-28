@@ -26,6 +26,7 @@ type OrbitStore = {
   addCodingQuestion: (topicId: string, question: string) => void;
   addNote: (note: Omit<Note, 'id' | 'updatedAt'>) => void;
   toggleTask: (taskId: string) => void;
+  rescheduleTask: (taskId: string, date: string) => void;
   reorderTasks: (from: number, to: number) => void;
   addTask: (task: Omit<StudyTask, 'id' | 'order' | 'completed'>) => void;
   startFocus: (taskId?: string) => void;
@@ -174,6 +175,12 @@ export const useOrbitStore = create<OrbitStore>()(
             const found = findTopic(data, task.topicId);
             if (found && found.topic.state === 'not-started') found.topic.state = task.actionType === 'Practise' ? 'practising' : 'learning';
           }
+          return { data };
+        }),
+      rescheduleTask: (taskId, date) =>
+        set((state) => {
+          const data = structuredClone(state.data) as OrbitData;
+          data.tasks = data.tasks.map((task) => (task.id === taskId ? { ...task, scheduledFor: date } : task));
           return { data };
         }),
       reorderTasks: (from, to) =>

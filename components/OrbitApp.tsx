@@ -3,9 +3,12 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BarChart3,
+  ArrowLeft,
+  BookOpen,
   CalendarClock,
   Check,
   ChevronDown,
+  ChevronRight,
   CircleDot,
   ClipboardList,
   Command,
@@ -14,20 +17,26 @@ import {
   Focus,
   Gauge,
   GraduationCap,
+  Home,
   Import,
   Library,
   ListChecks,
+  Menu,
   Moon,
   NotebookPen,
   PanelLeft,
+  Play,
   Plus,
   RotateCcw,
   Search,
   Settings,
+  SlidersHorizontal,
+  Smartphone,
   Sparkles,
   Sun,
   Timer,
   Trash2,
+  User,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -46,6 +55,14 @@ const navItems: { page: AppPage; label: string; icon: typeof Gauge }[] = [
   { page: 'analytics', label: 'Analytics', icon: BarChart3 },
   { page: 'notes', label: 'Notes', icon: NotebookPen },
   { page: 'settings', label: 'Settings', icon: Settings },
+];
+
+const mobileNavItems: { page: AppPage; label: string; icon: typeof Gauge }[] = [
+  { page: 'overview', label: 'Home', icon: Home },
+  { page: 'subjects', label: 'Subjects', icon: Library },
+  { page: 'today', label: 'Today', icon: ClipboardList },
+  { page: 'revision', label: 'Revision', icon: CalendarClock },
+  { page: 'settings', label: 'Profile', icon: User },
 ];
 
 const stateLabels: Record<LearningState, string> = {
@@ -100,7 +117,8 @@ function AppFrame() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="min-w-0 flex-1 pb-24 md:pb-0 md:pl-20 lg:pl-72">
+      <MobileApp />
+      <main className="hidden min-w-0 flex-1 pb-24 md:block md:pb-0 md:pl-20 lg:pl-72">
         <TopBar />
         <div className="mx-auto max-w-[1540px] px-4 pb-10 pt-4 sm:px-6 lg:px-8">
           <AnimatePresence mode="wait">
@@ -203,7 +221,7 @@ function TopBar() {
   const recommendation = recommendedNextTask(data, data.preferences.focusModeSubjectId);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_84%,transparent)] px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-20 hidden border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_84%,transparent)] px-4 py-3 backdrop-blur-xl md:block sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-[1540px] items-center gap-3">
         <PanelLeft className="text-[var(--muted)] lg:hidden" size={18} />
         <div className="min-w-0 flex-1">
@@ -232,16 +250,650 @@ function TopBar() {
   );
 }
 
+function MobileApp() {
+  const activePage = useOrbitStore((state) => state.activePage);
+  const setSearchOpen = useOrbitStore((state) => state.setSearchOpen);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string>();
+  const selectedSubject = useOrbitStore((state) => (selectedSubjectId ? findSubject(state.data, selectedSubjectId) : undefined));
+  const pageTitle = selectedSubject && activePage === 'subjects' ? selectedSubject.shortName : mobileNavItems.find((item) => item.page === activePage)?.label ?? 'ORBIT';
+  return (
+    <main className="min-h-screen w-full pb-[calc(5.75rem+env(safe-area-inset-bottom))] md:hidden">
+      <MobileTopBar
+        title={pageTitle}
+        showBack={!!selectedSubject && activePage === 'subjects'}
+        onBack={() => setSelectedSubjectId(undefined)}
+        onSearch={() => setSearchOpen(true)}
+        onQuickAdd={() => setQuickAddOpen(true)}
+      />
+      <div className="space-y-4 px-4 pb-4 pt-3">
+        <AnimatePresence mode="wait">
+          <motion.div key={`${activePage}-${selectedSubjectId ?? 'list'}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+            {activePage === 'overview' && <MobileHome onQuickAdd={() => setQuickAddOpen(true)} />}
+            {activePage === 'subjects' && (selectedSubject ? <MobileSubjectDetail subject={selectedSubject} /> : <MobileSubjects onSelect={setSelectedSubjectId} />)}
+            {activePage === 'today' && <MobileToday onQuickAdd={() => setQuickAddOpen(true)} />}
+            {activePage === 'revision' && <MobileRevision />}
+            {activePage === 'notes' && <MobileNotes />}
+            {activePage === 'settings' && <MobileProfile />}
+            {['practice', 'analytics'].includes(activePage) && <MobileSubjects onSelect={setSelectedSubjectId} />}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      <QuickAddSheet open={quickAddOpen} onClose={() => setQuickAddOpen(false)} />
+    </main>
+  );
+}
+
+function MobileTopBar({ title, showBack, onBack, onSearch, onQuickAdd }: { title: string; showBack: boolean; onBack: () => void; onSearch: () => void; onQuickAdd: () => void }) {
+  const activePage = useOrbitStore((state) => state.activePage);
+  const quickAddPages: AppPage[] = ['overview', 'today', 'subjects', 'notes'];
+  return (
+    <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur-xl">
+      <div className="flex min-h-11 items-center gap-2">
+        {showBack ? (
+          <button type="button" onClick={onBack} className="grid h-11 w-11 place-items-center rounded-xl border border-[var(--border)]" aria-label="Back">
+            <ArrowLeft size={18} />
+          </button>
+        ) : (
+          <div className="grid h-11 w-11 place-items-center rounded-xl border border-[var(--border)] bg-[var(--accent-soft)] text-[var(--accent)]">
+            <CircleDot size={18} />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">ORBIT</div>
+          <h1 className="truncate text-lg font-semibold">{title}</h1>
+        </div>
+        <button type="button" onClick={onSearch} className="grid h-11 w-11 place-items-center rounded-xl border border-[var(--border)]" aria-label="Search">
+          <Search size={18} />
+        </button>
+        {quickAddPages.includes(activePage) && (
+          <button type="button" onClick={onQuickAdd} className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--accent)] text-white" aria-label="Quick add">
+            <Plus size={18} />
+          </button>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function MobileHome({ onQuickAdd }: { onQuickAdd: () => void }) {
+  const data = useOrbitStore((state) => state.data);
+  const setPage = useOrbitStore((state) => state.setPage);
+  const setSubject = useOrbitStore((state) => state.setSubject);
+  const setTopic = useOrbitStore((state) => state.setTopic);
+  const startFocus = useOrbitStore((state) => state.startFocus);
+  const recommendation = recommendedNextTask(data, data.preferences.focusModeSubjectId);
+  const recommendedSubject = findSubject(data, recommendation.subjectId);
+  const recommendedTopic = findTopic(data, recommendation.topicId)?.topic;
+  const tasks = todaysTasks(data);
+  const urgentRevisions = data.revisions.filter((revision) => ['due', 'overdue'].includes(revisionStatus(revision))).slice(0, 2);
+  const subjects = activeSubjects(data);
+  const activeTopic = subjects.flatMap((subject) => subject.modules.flatMap((module) => module.topics.map((topic) => ({ subject, topic })))).find(({ topic }) => topic.state === 'learning' || topic.state === 'practising');
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="text-sm text-[var(--muted)]">Good morning</div>
+        <h2 className="mt-1 text-xl font-semibold">Let&apos;s make one clear move.</h2>
+      </section>
+      <section className="rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-soft)] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs uppercase tracking-[0.16em] text-[var(--accent)]">Next task</div>
+            <h3 className="mt-2 text-lg font-semibold">{recommendation.title}</h3>
+            <p className="mt-1 text-sm text-[var(--muted)]">{recommendedSubject?.shortName ?? 'No subject'}{recommendedTopic ? ` · ${recommendedTopic.title}` : ''}</p>
+          </div>
+          <span className="rounded-xl border border-[var(--border)] px-2 py-1 text-xs">{recommendation.estimatedMinutes}m</span>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-[var(--muted)]">
+          <div>{recommendation.actionType}</div>
+          <div className="text-right">{recommendation.reason}</div>
+        </div>
+        <button type="button" onClick={() => startFocus(tasks.find((task) => task.title === recommendation.title)?.id)} className="mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent)] text-sm font-semibold text-white">
+          <Play size={16} /> Start
+        </button>
+      </section>
+      <div className="grid grid-cols-[116px_1fr] gap-3">
+        <MobileProgressOrb value={semesterProgress(data)} label="Semester" />
+        <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Continue learning</div>
+          {activeTopic ? (
+            <button type="button" onClick={() => setTopic(activeTopic.topic.id)} className="mt-3 w-full text-left">
+              <div className="text-sm font-semibold">{activeTopic.topic.title}</div>
+              <div className="mt-1 text-xs text-[var(--muted)]">{activeTopic.subject.shortName} · {topicCompletion(activeTopic.topic)}% complete</div>
+            </button>
+          ) : (
+            <p className="mt-3 text-sm text-[var(--muted)]">Start a topic to create your learning trail.</p>
+          )}
+        </section>
+      </div>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Today's tasks" action="Add" onAction={onQuickAdd} />
+        <div className="space-y-2">
+          {tasks.slice(0, 4).map((task) => <MobileTaskCard key={task.id} task={task} />)}
+          {!tasks.length && <EmptyState title="No tasks for today" body="Quick Add can create your first real task." />}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Revision due" action="View all" onAction={() => setPage('revision')} />
+        <div className="space-y-2">
+          {urgentRevisions.map((revision) => {
+            const found = findTopic(data, revision.topicId);
+            return <MobileRevisionCard key={revision.id} revisionId={revision.id} title={found?.topic.title ?? 'Topic'} subject={found?.subject.shortName ?? 'Subject'} status={revisionStatus(revision)} dueDate={revision.dueDate} confidence={found?.topic.confidence ?? 1} />;
+          })}
+          {!urgentRevisions.length && <EmptyState title="No urgent revision" body="Completed topics will schedule revision automatically." />}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Subject progress" />
+        <div className="space-y-3">
+          {subjects.map((subject) => {
+            const progress = subjectProgress(subject);
+            return (
+              <button key={subject.id} type="button" onClick={() => { setSubject(subject.id); }} className="w-full text-left">
+                <div className="flex items-center gap-3">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: subject.accent }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{subject.name}</div>
+                    <div className="text-xs text-[var(--muted)]">{progress.completed}/{progress.total} topics · {progress.currentModule}</div>
+                  </div>
+                  <span className="text-sm font-semibold">{progress.percentage}%</span>
+                </div>
+                <ProgressBar value={progress.percentage} className="mt-2" />
+              </button>
+            );
+          })}
+          {!subjects.length && <EmptyState title="No subjects yet" body="Open Profile to build or import a semester." />}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MobileSubjects({ onSelect }: { onSelect: (subjectId: string) => void }) {
+  const data = useOrbitStore((state) => state.data);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'Active' | 'Needs attention' | 'Completed' | 'All'>('Active');
+  const subjects = activeSubjects(data).filter((subject) => {
+    const progress = subjectProgress(subject);
+    const matchesSearch = `${subject.name} ${subject.code}`.toLowerCase().includes(query.toLowerCase());
+    const matchesFilter = filter === 'All' || (filter === 'Completed' && progress.percentage === 100) || (filter === 'Needs attention' && (progress.percentage < 25 || averageConfidence(subject) <= 2.2)) || (filter === 'Active' && progress.percentage < 100);
+    return matchesSearch && matchesFilter;
+  });
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3">
+        <div className="flex items-center gap-2">
+          <Search size={17} className="text-[var(--muted)]" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search subjects" className="min-h-11 min-w-0 flex-1 bg-transparent text-sm outline-none" />
+        </div>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 thin-scrollbar">
+        {(['Active', 'Needs attention', 'Completed', 'All'] as const).map((item) => <button key={item} type="button" onClick={() => setFilter(item)} className={`whitespace-nowrap rounded-xl border px-3 py-2 text-xs ${filter === item ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--border)] text-[var(--muted)]'}`}>{item}</button>)}
+      </div>
+      <div className="space-y-3">
+        {subjects.map((subject) => {
+          const progress = subjectProgress(subject);
+          const nextTopic = subject.modules.flatMap((module) => module.topics).find((topic) => topic.state !== 'completed');
+          return (
+            <button key={subject.id} type="button" onClick={() => onSelect(subject.id)} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left active:border-[var(--accent)]/40">
+              <div className="flex items-start gap-3">
+                <span className="mt-1 h-3 w-3 rounded-full" style={{ background: subject.accent }} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="truncate font-semibold">{subject.name}</h2>
+                    <span className="text-sm font-semibold">{progress.percentage}%</span>
+                  </div>
+                  <div className="mt-1 text-xs text-[var(--muted)]">{subject.code} · {progress.currentModule}</div>
+                  <ProgressBar value={progress.percentage} className="mt-3" />
+                  <div className="mt-3 grid gap-1 text-xs text-[var(--muted)]">
+                    <span>{progress.completed}/{progress.total} topics completed</span>
+                    <span>Next: {nextTopic?.title ?? 'No open topics'}</span>
+                  </div>
+                </div>
+                <ChevronRight size={18} className="mt-1 text-[var(--muted)]" />
+              </div>
+            </button>
+          );
+        })}
+        {!subjects.length && <EmptyState title="No matching subjects" body="Adjust the filter or add a subject from Profile." />}
+      </div>
+    </div>
+  );
+}
+
+function MobileSubjectDetail({ subject }: { subject: Subject }) {
+  const [tab, setTab] = useState<'Roadmap' | 'Modules' | 'Practice' | 'Notes' | 'Revision'>('Roadmap');
+  const progress = subjectProgress(subject);
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">{subject.code}</div>
+            <h2 className="mt-1 truncate text-xl font-semibold">{subject.name}</h2>
+          </div>
+          <MobileProgressOrb value={progress.percentage} label="Done" compact />
+        </div>
+      </section>
+      <div className="flex gap-2 overflow-x-auto pb-1 thin-scrollbar">
+        {(['Roadmap', 'Modules', 'Practice', 'Notes', 'Revision'] as const).map((item) => <button key={item} type="button" onClick={() => setTab(item)} className={`min-h-11 whitespace-nowrap rounded-xl border px-4 text-sm ${tab === item ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--border)] text-[var(--muted)]'}`}>{item}</button>)}
+      </div>
+      {tab === 'Roadmap' && <MobileRoadmap subject={subject} />}
+      {tab === 'Modules' && <MobileModuleView subject={subject} />}
+      {tab === 'Practice' && <PracticePage subjectFilter={subject.id} />}
+      {tab === 'Notes' && <MobileNotes subjectFilter={subject.id} />}
+      {tab === 'Revision' && <MobileRevision subjectFilter={subject.id} />}
+    </div>
+  );
+}
+
+function MobileRoadmap({ subject }: { subject: Subject }) {
+  const data = useOrbitStore((state) => state.data);
+  const setTopic = useOrbitStore((state) => state.setTopic);
+  const topics = subject.modules.flatMap((module) => module.topics.map((topic) => ({ module, topic })));
+  return (
+    <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+      <MobileSectionHeader title="Roadmap" />
+      <div className="relative space-y-3 before:absolute before:bottom-6 before:left-4 before:top-6 before:w-px before:bg-[var(--border)]">
+        {topics.map(({ module, topic }, index) => (
+          <button key={topic.id} type="button" onClick={() => setTopic(topic.id)} className="relative flex w-full gap-3 text-left">
+            <span className="z-10 grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-[var(--border)] bg-[var(--elevated)] text-xs">{index + 1}</span>
+            <div className="min-w-0 flex-1 rounded-2xl border border-[var(--border)] bg-white/[0.025] p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold">{topic.title}</div>
+                  <div className="mt-1 text-xs text-[var(--muted)]">{module.title} · Confidence {topic.confidence}/5</div>
+                </div>
+                <StateBadge state={topic.state} />
+              </div>
+              <div className="mt-3 text-xs text-[var(--muted)]">{topic.checkpoints.filter((item) => item.completed).length}/5 checkpoints · {data.revisions.find((revision) => revision.topicId === topic.id && !revision.completedAt)?.dueDate ?? 'No revision set'}</div>
+              <ProgressBar value={topicCompletion(topic)} className="mt-2" />
+            </div>
+          </button>
+        ))}
+        {!topics.length && <EmptyState title="No topics" body="Add modules and topics to create a learning journey." />}
+      </div>
+    </section>
+  );
+}
+
+function MobileModuleView({ subject }: { subject: Subject }) {
+  const setTopic = useOrbitStore((state) => state.setTopic);
+  return (
+    <div className="space-y-3">
+      {subject.modules.map((module) => {
+        const completion = Math.round(module.topics.reduce((sum, topic) => sum + topicCompletion(topic), 0) / Math.max(module.topics.length, 1));
+        const remaining = module.topics.filter((topic) => topic.state !== 'completed').reduce((sum, topic) => sum + topic.estimatedMinutes, 0);
+        return (
+          <details key={module.id} open className="rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+            <summary className="min-h-14 cursor-pointer p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-semibold">{module.title}</div>
+                  <div className="mt-1 text-xs text-[var(--muted)]">{module.topics.length} topics · {remaining}m remaining</div>
+                </div>
+                <span className="text-sm font-semibold">{completion}%</span>
+              </div>
+            </summary>
+            <div className="divide-y divide-[var(--border)] border-t border-[var(--border)]">
+              {module.topics.map((topic) => (
+                <button key={topic.id} type="button" onClick={() => setTopic(topic.id)} className="flex min-h-14 w-full items-center gap-3 p-4 text-left">
+                  <span className={`grid h-7 w-7 place-items-center rounded-lg border ${topic.state === 'completed' ? 'border-[var(--success)] bg-[var(--success)] text-black' : 'border-[var(--border)] text-[var(--muted)]'}`}>{topic.state === 'completed' ? <Check size={14} /> : <BookOpen size={14} />}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{topic.title}</div>
+                    <div className="text-xs text-[var(--muted)]">{topic.checkpoints.filter((item) => item.completed).length}/5 · Confidence {topic.confidence}/5</div>
+                  </div>
+                  <ChevronRight size={16} className="text-[var(--muted)]" />
+                </button>
+              ))}
+            </div>
+          </details>
+        );
+      })}
+    </div>
+  );
+}
+
+function MobileToday({ onQuickAdd }: { onQuickAdd: () => void }) {
+  const data = useOrbitStore((state) => state.data);
+  const tasks = todaysTasks(data);
+  const openTasks = tasks.filter((task) => !task.completed);
+  const doneTasks = tasks.filter((task) => task.completed);
+  const goal = recommendedNextTask(data, data.preferences.focusModeSubjectId);
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Primary goal" />
+        <h2 className="text-lg font-semibold">{goal.title}</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">{goal.reason}</p>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Task list" action="Quick add" onAction={onQuickAdd} />
+        <div className="space-y-2">
+          {openTasks.map((task) => <MobileTaskCard key={task.id} task={task} />)}
+          {!openTasks.length && <EmptyState title="No open tasks" body="Create a task or start the recommended next move." />}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Completed today" />
+        <div className="space-y-2">
+          {doneTasks.map((task) => <MobileTaskCard key={task.id} task={task} />)}
+          {!doneTasks.length && <EmptyState title="Nothing completed yet" body="A completed task will appear here immediately." />}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MobileRevision({ subjectFilter }: { subjectFilter?: string }) {
+  const data = useOrbitStore((state) => state.data);
+  const revisions = data.revisions.filter((revision) => !subjectFilter || revision.subjectId === subjectFilter);
+  const sections = [
+    { title: 'Due today', status: 'due' },
+    { title: 'Overdue', status: 'overdue' },
+    { title: 'Upcoming', status: 'upcoming' },
+  ] as const;
+  return (
+    <div className="space-y-4">
+      {sections.map((section) => {
+        const items = revisions.filter((revision) => revisionStatus(revision) === section.status);
+        return (
+          <section key={section.status} className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+            <MobileSectionHeader title={section.title} />
+            <div className="space-y-2">
+              {items.map((revision) => {
+                const found = findTopic(data, revision.topicId);
+                return <MobileRevisionCard key={revision.id} revisionId={revision.id} title={found?.topic.title ?? 'Topic'} subject={found?.subject.shortName ?? 'Subject'} status={section.status} dueDate={revision.dueDate} confidence={found?.topic.confidence ?? 1} />;
+              })}
+              {!items.length && <EmptyState title="Nothing here" body="Revision cards appear after topics are completed." />}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function MobileNotes({ subjectFilter }: { subjectFilter?: string }) {
+  const data = useOrbitStore((state) => state.data);
+  const addNote = useOrbitStore((state) => state.addNote);
+  const [query, setQuery] = useState('');
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [important, setImportant] = useState(false);
+  const [confusing, setConfusing] = useState(false);
+  const notes = data.notes.filter((note) => (!subjectFilter || note.subjectId === subjectFilter) && `${note.title} ${note.body}`.toLowerCase().includes(query.toLowerCase()));
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3">
+        <div className="flex items-center gap-2">
+          <Search size={17} className="text-[var(--muted)]" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search notes" className="min-h-11 min-w-0 flex-1 bg-transparent text-sm outline-none" />
+          <button type="button" onClick={() => setEditorOpen(true)} className="grid h-11 w-11 place-items-center rounded-xl bg-[var(--accent)] text-white"><Plus size={17} /></button>
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Important notes" />
+        <div className="space-y-2">
+          {notes.filter((note) => note.important).slice(0, 4).map((note) => <NoteCard key={note.id} note={note} />)}
+          {!notes.some((note) => note.important) && <EmptyState title="No important notes" body="Mark notes important when saving them." />}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Recent notes" />
+        <div className="space-y-2">
+          {notes.map((note) => <NoteCard key={note.id} note={note} />)}
+          {!notes.length && <EmptyState title="No notes yet" body="Use the full-screen editor to save text, code snippets and links." />}
+        </div>
+      </section>
+      <AnimatePresence>
+        {editorOpen && (
+          <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-[65] bg-[var(--bg)] p-4 pt-[calc(1rem+env(safe-area-inset-top))]">
+            <div className="flex min-h-11 items-center gap-3">
+              <button onClick={() => setEditorOpen(false)} className="grid h-11 w-11 place-items-center rounded-xl border border-[var(--border)]"><ArrowLeft size={18} /></button>
+              <h2 className="flex-1 text-lg font-semibold">Note editor</h2>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" className="min-h-12 rounded-xl border border-[var(--border)] bg-transparent px-3 text-sm" />
+              <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Text, code blocks, resource links..." className="min-h-[48vh] resize-none rounded-2xl border border-[var(--border)] bg-transparent p-4 text-sm" />
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={() => setImportant(!important)} className={`min-h-11 rounded-xl border text-sm ${important ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--border)] text-[var(--muted)]'}`}>Important</button>
+                <button onClick={() => setConfusing(!confusing)} className={`min-h-11 rounded-xl border text-sm ${confusing ? 'border-[var(--warning)] bg-[rgba(215,174,104,0.12)] text-[var(--warning)]' : 'border-[var(--border)] text-[var(--muted)]'}`}>Confusing</button>
+              </div>
+              <button disabled={!body.trim()} onClick={() => { const subjectId = subjectFilter ?? activeSubjects(data)[0]?.id; if (!subjectId) return; addNote({ title: title.trim() || 'Untitled note', body, subjectId, important, confusing }); setTitle(''); setBody(''); setImportant(false); setConfusing(false); setEditorOpen(false); }} className="min-h-12 rounded-xl bg-[var(--accent)] text-sm font-semibold text-white disabled:opacity-50">Save note</button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function MobileProfile() {
+  const data = useOrbitStore((state) => state.data);
+  const setPage = useOrbitStore((state) => state.setPage);
+  const updatePreferences = useOrbitStore((state) => state.updatePreferences);
+  const resetProgress = useOrbitStore((state) => state.resetProgress);
+  const importData = useOrbitStore((state) => state.importData);
+  const [installPrompt, setInstallPrompt] = useState<Event | null>(null);
+  useEffect(() => {
+    const handler = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'orbit-semester-data.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div className="space-y-4">
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-12 w-12 place-items-center rounded-2xl border border-[var(--border)] bg-[var(--accent-soft)] text-[var(--accent)]">A</div>
+          <div>
+            <h2 className="font-semibold">{data.semester.title}</h2>
+            <p className="text-sm text-[var(--muted)]">{data.semester.program}</p>
+          </div>
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Study preference" />
+        <div className="grid gap-2">
+          {(['One topic at a time', 'Daily balanced plan', 'Exam sprint', 'Project-focused'] as const).map((style) => <button key={style} onClick={() => updatePreferences({ workStyle: style })} className={`min-h-11 rounded-xl border px-3 text-left text-sm ${data.preferences.workStyle === style ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--border)]'}`}>{style}</button>)}
+        </div>
+      </section>
+      <section id="mobile-semester-settings" className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Daily availability" />
+        <div className="grid grid-cols-2 gap-2">
+          {(['30 minutes', '1 hour', '2 hours', 'Flexible'] as const).map((time) => <button key={time} onClick={() => updatePreferences({ dailyTime: time })} className={`min-h-11 rounded-xl border px-3 text-sm ${data.preferences.dailyTime === time ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--border)]'}`}>{time}</button>)}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+        <MobileSectionHeader title="Settings" />
+        <div className="grid gap-2">
+          <button onClick={() => updatePreferences({ theme: data.preferences.theme === 'dark' ? 'light' : 'dark' })} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Moon size={16} /> Theme: {data.preferences.theme}</button>
+          <button onClick={() => setPage('notes')} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><NotebookPen size={16} /> Notes</button>
+          <button onClick={exportData} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Download size={16} /> Export data</button>
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Import size={16} /> Import data<input type="file" accept="application/json" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; if (!confirm('Importing JSON will replace current ORBIT data. Continue?')) { event.target.value = ''; return; } try { importData(JSON.parse(await file.text()) as OrbitData); } catch { alert('That JSON file could not be read safely.'); } }} /></label>
+          <button onClick={() => document.getElementById('mobile-semester-settings')?.scrollIntoView({ behavior: 'smooth' })} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><SlidersHorizontal size={16} /> Semester settings</button>
+          <button onClick={() => installPrompt && 'prompt' in installPrompt && (installPrompt as { prompt: () => Promise<void> }).prompt()} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-sm"><Smartphone size={16} /> Install app</button>
+          <button onClick={() => confirm('Reset all local ORBIT data?') && resetProgress()} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--danger)]/35 px-3 text-sm text-[var(--danger)]"><RotateCcw size={16} /> Reset progress</button>
+        </div>
+      </section>
+      <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-sm leading-6 text-[var(--muted)]">
+        <MobileSectionHeader title="About ORBIT" />
+        ORBIT is a local-first academic tracker. Your subjects, tasks, revisions, notes and sessions stay synchronized through the shared browser storage used by desktop and mobile.
+      </section>
+    </div>
+  );
+}
+
+function MobileTaskCard({ task }: { task: StudyTask }) {
+  const data = useOrbitStore((state) => state.data);
+  const toggleTask = useOrbitStore((state) => state.toggleTask);
+  const rescheduleTask = useOrbitStore((state) => state.rescheduleTask);
+  const setTopic = useOrbitStore((state) => state.setTopic);
+  const startFocus = useOrbitStore((state) => state.startFocus);
+  const subject = findSubject(data, task.subjectId);
+  const topic = findTopic(data, task.topicId)?.topic;
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  return (
+    <motion.article drag="x" dragConstraints={{ left: -64, right: 64 }} onDragEnd={(_, info) => { if (info.offset.x > 56) toggleTask(task.id); if (info.offset.x < -56) rescheduleTask(task.id, tomorrow); }} className="rounded-2xl border border-[var(--border)] bg-white/[0.025] p-3">
+      <div className="flex items-start gap-3">
+        <button onClick={() => toggleTask(task.id)} className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl border transition ${task.completed ? 'border-[var(--success)] bg-[var(--success)] text-black' : 'border-[var(--border)]'}`} aria-label="Complete task">{task.completed && <Check size={15} />}</button>
+        <button onClick={() => task.topicId && setTopic(task.topicId)} className="min-w-0 flex-1 text-left">
+          <div className="text-sm font-semibold">{task.title}</div>
+          <div className="mt-1 text-xs text-[var(--muted)]">{subject?.shortName ?? 'Subject'}{topic ? ` · ${topic.title}` : ''}</div>
+          <div className="mt-2 flex gap-2 text-[11px] text-[var(--muted)]"><span>{task.actionType}</span><span>{task.estimatedMinutes}m</span><span>{task.priority}</span></div>
+        </button>
+        <details className="relative">
+          <summary className="grid h-8 w-8 list-none place-items-center rounded-xl border border-[var(--border)] text-[var(--muted)]"><Menu size={15} /></summary>
+          <div className="absolute right-0 top-10 z-10 grid w-40 gap-1 rounded-xl border border-[var(--border)] bg-[var(--elevated)] p-2 shadow-soft">
+            <button onClick={() => startFocus(task.id)} className="rounded-lg px-2 py-2 text-left text-xs hover:bg-white/[0.05]">Start focus</button>
+            <button onClick={() => toggleTask(task.id)} className="rounded-lg px-2 py-2 text-left text-xs hover:bg-white/[0.05]">Complete</button>
+            <button onClick={() => rescheduleTask(task.id, tomorrow)} className="rounded-lg px-2 py-2 text-left text-xs hover:bg-white/[0.05]">Tomorrow</button>
+          </div>
+        </details>
+      </div>
+    </motion.article>
+  );
+}
+
+function MobileRevisionCard({ revisionId, title, subject, status, dueDate, confidence }: { revisionId: string; title: string; subject: string; status: string; dueDate: string; confidence: number }) {
+  const completeRevision = useOrbitStore((state) => state.completeRevision);
+  const [nextConfidence, setNextConfidence] = useState(confidence);
+  const dueText = status === 'overdue' ? `Overdue since ${dueDate}` : status === 'due' ? 'Due today' : `Due ${dueDate}`;
+  return (
+    <article className="rounded-2xl border border-[var(--border)] bg-white/[0.025] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="mt-1 text-xs text-[var(--muted)]">{subject} · Previous confidence {confidence}/5</div>
+          <div className="mt-1 text-xs text-[var(--muted)]">{dueText}</div>
+        </div>
+        <span className={`rounded-lg px-2 py-1 text-[10px] ${status === 'overdue' ? 'bg-[rgba(224,130,130,0.12)] text-[var(--danger)]' : 'bg-[var(--accent-soft)] text-[var(--accent)]'}`}>{status}</span>
+      </div>
+      {status !== 'completed' && (
+        <div className="mt-3 flex items-center gap-2">
+          <input type="range" min={1} max={5} value={nextConfidence} onChange={(event) => setNextConfidence(Number(event.target.value))} className="min-w-0 flex-1 accent-[var(--accent)]" />
+          <button onClick={() => completeRevision(revisionId, nextConfidence)} className="min-h-10 rounded-xl bg-[var(--accent)] px-3 text-xs font-semibold text-white">Revise</button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function QuickAddSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const data = useOrbitStore((state) => state.data);
+  const addTask = useOrbitStore((state) => state.addTask);
+  const addCustomTopic = useOrbitStore((state) => state.addCustomTopic);
+  const addCustomSubject = useOrbitStore((state) => state.addCustomSubject);
+  const addNote = useOrbitStore((state) => state.addNote);
+  const [kind, setKind] = useState<'Study task' | 'Topic' | 'Note' | 'Revision' | 'Custom subject'>('Study task');
+  const subjects = activeSubjects(data);
+  const [subjectId, setSubjectId] = useState(subjects[0]?.id ?? '');
+  const subject = findSubject(data, subjectId) ?? subjects[0];
+  const topics = subject?.modules.flatMap((module) => module.topics) ?? [];
+  const [topicId, setTopicId] = useState('');
+  const [title, setTitle] = useState('');
+  const [duration, setDuration] = useState(25);
+  const [priority, setPriority] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  useEffect(() => {
+    if (!subjectId && subjects[0]) setSubjectId(subjects[0].id);
+  }, [subjectId, subjects]);
+  const save = () => {
+    if (kind === 'Custom subject') {
+      addCustomSubject(title);
+    } else if (kind === 'Topic' && subject) {
+      addCustomTopic(subject.id, title);
+    } else if (kind === 'Note' && subject) {
+      addNote({ title: title || 'Quick note', body: title, subjectId: subject.id, topicId: topicId || undefined, important: false, confusing: false });
+    } else if (subject) {
+      addTask({ subjectId: subject.id, topicId: topicId || undefined, title: title || `${kind} ${topics.find((topic) => topic.id === topicId)?.title ?? subject.shortName}`, actionType: kind === 'Revision' ? 'Revise' : 'Learn', estimatedMinutes: duration, priority, scheduledFor: date });
+    }
+    setTitle('');
+    onClose();
+  };
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div className="fixed inset-0 z-[70] bg-black/45 md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+          <motion.section initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 260 }} onClick={(event) => event.stopPropagation()} className="absolute bottom-0 left-0 right-0 max-h-[86vh] overflow-y-auto rounded-t-3xl border border-[var(--border)] bg-[var(--surface)] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-soft">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Quick Add</h2>
+              <button onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--border)]"><X size={17} /></button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {(['Study task', 'Topic', 'Note', 'Revision', 'Custom subject'] as const).map((item) => <button key={item} onClick={() => setKind(item)} className={`min-h-11 rounded-xl border px-3 text-left text-sm ${kind === item ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]' : 'border-[var(--border)] text-[var(--muted)]'}`}>{item}</button>)}
+            </div>
+            <div className="mt-4 grid gap-3">
+              {kind !== 'Custom subject' && (
+                <select value={subject?.id ?? ''} onChange={(event) => { setSubjectId(event.target.value); setTopicId(''); }} className="min-h-12 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm">
+                  {subjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              )}
+              {['Study task', 'Note', 'Revision'].includes(kind) && (
+                <select value={topicId} onChange={(event) => setTopicId(event.target.value)} className="min-h-12 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm">
+                  <option value="">No topic selected</option>
+                  {topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.title}</option>)}
+                </select>
+              )}
+              <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={kind === 'Custom subject' ? 'Subject name' : kind === 'Topic' ? 'Topic title' : 'Task, note or revision title'} className="min-h-12 rounded-xl border border-[var(--border)] bg-transparent px-3 text-sm" />
+              {['Study task', 'Revision'].includes(kind) && (
+                <div className="grid grid-cols-3 gap-2">
+                  <input type="number" min={5} value={duration} onChange={(event) => setDuration(Number(event.target.value) || 25)} className="min-h-12 rounded-xl border border-[var(--border)] bg-transparent px-3 text-sm" aria-label="Duration" />
+                  <select value={priority} onChange={(event) => setPriority(event.target.value as 'Low' | 'Medium' | 'High')} className="min-h-12 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-sm"><option>Low</option><option>Medium</option><option>High</option></select>
+                  <input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="min-h-12 rounded-xl border border-[var(--border)] bg-transparent px-3 text-sm" />
+                </div>
+              )}
+              <button disabled={!title.trim() && kind !== 'Study task'} onClick={save} className="min-h-12 rounded-xl bg-[var(--accent)] text-sm font-semibold text-white disabled:opacity-50">Save</button>
+            </div>
+          </motion.section>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+function MobileProgressOrb({ value, label, compact = false }: { value: number; label: string; compact?: boolean }) {
+  const size = compact ? 'h-16 w-16' : 'h-[116px] w-[116px]';
+  return (
+    <div className={`grid ${size} place-items-center rounded-full border border-[var(--border)] bg-[var(--surface)]`} style={{ backgroundImage: `conic-gradient(var(--accent) ${value}%, transparent 0)` }}>
+      <div className={`grid ${compact ? 'h-12 w-12' : 'h-24 w-24'} place-items-center rounded-full bg-[var(--surface)] text-center`}>
+        <div>
+          <div className={compact ? 'text-lg font-semibold' : 'text-2xl font-semibold'}>{value}%</div>
+          <div className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">{label}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MobileSectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+  return <div className="mb-3 flex items-center justify-between gap-3"><h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]">{title}</h2>{action && <button type="button" onClick={onAction} className="min-h-8 rounded-lg px-2 text-xs text-[var(--accent)]">{action}</button>}</div>;
+}
+
 function MobileNav() {
   const activePage = useOrbitStore((state) => state.activePage);
   const setPage = useOrbitStore((state) => state.setPage);
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_91%,transparent)] px-2 py-2 backdrop-blur-xl md:hidden">
-      {navItems.slice(0, 5).map((item) => {
+    <nav className="fixed bottom-0 left-0 right-0 z-40 grid grid-cols-5 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_93%,transparent)] px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl md:hidden">
+      {mobileNavItems.map((item) => {
         const Icon = item.icon;
         const active = activePage === item.page;
         return (
-          <button key={item.page} type="button" onClick={() => setPage(item.page)} className={`flex flex-col items-center gap-1 rounded-xl px-2 py-2 text-[10px] ${active ? 'text-[var(--accent)]' : 'text-[var(--muted)]'}`}>
+          <button key={item.page} type="button" onClick={() => setPage(item.page)} className={`flex min-h-11 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-[10px] transition ${active ? 'bg-[var(--accent-soft)] text-[var(--accent)]' : 'text-[var(--muted)] active:bg-white/[0.04]'}`}>
             <Icon size={17} />
             {item.label}
           </button>
@@ -761,6 +1413,8 @@ function TopicPanel() {
   const addSubtopic = useOrbitStore((state) => state.addSubtopic);
   const addNote = useOrbitStore((state) => state.addNote);
   const deleteCustomTopic = useOrbitStore((state) => state.deleteCustomTopic);
+  const addTask = useOrbitStore((state) => state.addTask);
+  const startFocus = useOrbitStore((state) => state.startFocus);
   const found = findTopic(data, topicId);
   const [resource, setResource] = useState('');
   const [question, setQuestion] = useState('');
@@ -770,7 +1424,7 @@ function TopicPanel() {
   return (
     <AnimatePresence>
       {found && (
-        <motion.aside initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 240 }} className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto border-l border-[var(--border)] bg-[var(--bg)] p-5 shadow-soft sm:max-w-xl">
+        <motion.aside initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', damping: 28, stiffness: 240 }} className="fixed inset-y-0 right-0 z-50 w-full overflow-y-auto border-l border-[var(--border)] bg-[var(--bg)] p-5 pb-[calc(6rem+env(safe-area-inset-bottom))] shadow-soft sm:max-w-xl md:pb-5">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
               <div className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">{found.subject.name} {'->'} {found.module.title}</div>
@@ -820,6 +1474,10 @@ function TopicPanel() {
             <button onClick={() => { addNote({ title: `${found.topic.title} note`, body: personalNote || 'Topic note', subjectId: found.subject.id, moduleId: found.module.id, topicId: found.topic.id, important: !!found.topic.important, confusing: !!found.topic.confusing }); setPersonalNote(''); }} className="rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Save note</button>
             {found.topic.custom && <button onClick={() => deleteCustomTopic(found.topic.id)} className="flex items-center justify-center gap-2 rounded-xl border border-[var(--danger)]/35 px-3 py-2 text-sm text-[var(--danger)]"><Trash2 size={15} /> Delete custom topic</button>}
           </div>
+          <div className="fixed bottom-0 left-0 right-0 z-10 grid grid-cols-2 gap-2 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_94%,transparent)] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-xl sm:absolute md:hidden">
+            <button onClick={() => { addTask({ subjectId: found.subject.id, topicId: found.topic.id, title: `Study ${found.topic.title}`, actionType: 'Learn', estimatedMinutes: found.topic.estimatedMinutes, priority: found.topic.confidence <= 2 ? 'High' : 'Medium', scheduledFor: new Date().toISOString().slice(0, 10) }); updateTopicState(found.topic.id, found.topic.state === 'not-started' ? 'learning' : found.topic.state); startFocus(); }} className="min-h-12 rounded-xl border border-[var(--border)] text-sm font-semibold">Start focus</button>
+            <button onClick={() => updateTopicState(found.topic.id, 'completed')} className="min-h-12 rounded-xl bg-[var(--accent)] text-sm font-semibold text-white">Complete topic</button>
+          </div>
         </motion.aside>
       )}
     </AnimatePresence>
@@ -830,23 +1488,38 @@ function FocusMode() {
   const data = useOrbitStore((state) => state.data);
   const focusTaskId = useOrbitStore((state) => state.focusTaskId);
   const endFocus = useOrbitStore((state) => state.endFocus);
+  const toggleCheckpoint = useOrbitStore((state) => state.toggleCheckpoint);
   const task = data.tasks.find((item) => item.id === focusTaskId);
   const found = findTopic(data, task?.topicId);
   const [seconds, setSeconds] = useState(25 * 60);
   useEffect(() => {
     if (!focusTaskId) return;
+    setSeconds((task?.estimatedMinutes ?? 25) * 60);
     const timer = window.setInterval(() => setSeconds((value) => Math.max(0, value - 1)), 1000);
     return () => window.clearInterval(timer);
-  }, [focusTaskId]);
+  }, [focusTaskId, task?.estimatedMinutes]);
   return (
     <AnimatePresence>
       {task && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] grid place-items-center bg-[var(--bg)] p-5">
-          <div className="w-full max-w-3xl text-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] overflow-y-auto bg-[var(--bg)] p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-[calc(1.25rem+env(safe-area-inset-top))] md:grid md:place-items-center">
+          <div className="mx-auto w-full max-w-3xl text-center">
             <div className="mx-auto mb-8 grid h-20 w-20 place-items-center rounded-3xl border border-[var(--border)] bg-[var(--accent-soft)] text-[var(--accent)]"><Timer size={32} /></div>
             <div className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">{found?.subject.name ?? 'Study session'} · {found?.topic.title ?? task.actionType}</div>
             <h2 className="mt-3 font-serif text-5xl">{task.title}</h2>
             <div className="my-10 text-7xl font-semibold tabular-nums">{Math.floor(seconds / 60).toString().padStart(2, '0')}:{(seconds % 60).toString().padStart(2, '0')}</div>
+            {found && (
+              <div className="mb-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-3 text-left">
+                <div className="mb-3 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Checklist</div>
+                <div className="grid gap-2">
+                  {found.topic.checkpoints.map((checkpoint) => (
+                    <button key={checkpoint.key} type="button" onClick={() => toggleCheckpoint(found.topic.id, checkpoint.key)} className="flex min-h-11 items-center gap-3 rounded-xl border border-[var(--border)] px-3 text-left text-sm">
+                      <span className={`grid h-6 w-6 place-items-center rounded-lg border ${checkpoint.completed ? 'border-[var(--success)] bg-[var(--success)] text-black' : 'border-[var(--border)]'}`}>{checkpoint.completed && <Check size={14} />}</span>
+                      {checkpoint.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <textarea placeholder="Scratch notes stay private on this device..." className="min-h-36 w-full resize-none rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4 text-left text-sm" />
             <div className="mt-5 flex justify-center gap-3">
               <button onClick={() => endFocus(0)} className="rounded-xl border border-[var(--border)] px-5 py-3 text-sm">Pause</button>

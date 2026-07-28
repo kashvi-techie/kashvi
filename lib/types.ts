@@ -1,0 +1,135 @@
+export type LearningState = 'not-started' | 'learning' | 'practising' | 'completed';
+export type TopicVisualState = LearningState | 'needs-revision';
+export type Difficulty = 'Foundation' | 'Core' | 'Hard' | 'Lab';
+export type ActionType = 'Learn' | 'Code' | 'Practise' | 'Revise' | 'Notes' | 'Assignment' | 'Exam preparation';
+export type Priority = 'Low' | 'Medium' | 'High';
+export type RevisionStatus = 'due' | 'overdue' | 'upcoming' | 'completed';
+export type AppPage = 'overview' | 'subjects' | 'today' | 'revision' | 'practice' | 'analytics' | 'notes' | 'settings';
+
+export type CheckpointKey = 'concept' | 'notes' | 'code' | 'questions' | 'revision';
+
+export type ChecklistItem = {
+  key: CheckpointKey;
+  label: string;
+  completed: boolean;
+};
+
+export type Subtopic = {
+  id: string;
+  title: string;
+  state: LearningState;
+  checkpoints: ChecklistItem[];
+  confidence: number;
+  important?: boolean;
+  confusing?: boolean;
+  estimatedMinutes: number;
+};
+
+export type Topic = {
+  id: string;
+  title: string;
+  description: string;
+  difficulty: Difficulty;
+  estimatedMinutes: number;
+  state: LearningState;
+  confidence: number;
+  checkpoints: ChecklistItem[];
+  subtopics: Subtopic[];
+  important?: boolean;
+  confusing?: boolean;
+  resources: string[];
+  codingQuestions: string[];
+  dueDate?: string;
+  lastActivity?: string;
+  custom?: boolean;
+};
+
+export type Module = {
+  id: string;
+  title: string;
+  topics: Topic[];
+};
+
+export type Subject = {
+  id: string;
+  name: string;
+  shortName: string;
+  code: string;
+  credits: number;
+  accent: string;
+  modules: Module[];
+  totalStudyHours: number;
+  assessmentReadiness: number;
+  custom?: boolean;
+};
+
+export type Semester = {
+  id: string;
+  title: string;
+  program: string;
+  subjects: Subject[];
+};
+
+export type StudyTask = {
+  id: string;
+  subjectId: string;
+  topicId?: string;
+  title: string;
+  actionType: ActionType;
+  estimatedMinutes: number;
+  actualMinutes?: number;
+  priority: Priority;
+  completed: boolean;
+  order: number;
+  scheduledFor: string;
+};
+
+export type Revision = {
+  id: string;
+  subjectId: string;
+  topicId: string;
+  round: 1 | 2 | 3 | 4;
+  dueDate: string;
+  completedAt?: string;
+  confidenceAfter?: number;
+};
+
+export type Note = {
+  id: string;
+  title: string;
+  body: string;
+  subjectId?: string;
+  moduleId?: string;
+  topicId?: string;
+  subtopicId?: string;
+  important: boolean;
+  confusing: boolean;
+  resourceUrl?: string;
+  updatedAt: string;
+};
+
+export type StudySession = {
+  id: string;
+  taskId?: string;
+  subjectId: string;
+  topicId?: string;
+  minutes: number;
+  completedAt: string;
+};
+
+export type UserPreferences = {
+  theme: 'dark' | 'light';
+  onboardingComplete: boolean;
+  workStyle: 'One topic at a time' | 'Daily balanced plan' | 'Exam sprint' | 'Project-focused';
+  dailyTime: '30 minutes' | '1 hour' | '2 hours' | 'Flexible';
+  focusModeSubjectId?: string;
+};
+
+export type OrbitData = {
+  semester: Semester;
+  tasks: StudyTask[];
+  revisions: Revision[];
+  notes: Note[];
+  sessions: StudySession[];
+  preferences: UserPreferences;
+};

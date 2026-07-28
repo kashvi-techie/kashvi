@@ -1352,6 +1352,9 @@ function SettingsPage() {
   const [semesterTitle, setSemesterTitle] = useState(data.semester.title);
   const [program, setProgram] = useState(data.semester.program);
   const [backups, setBackups] = useState(() => listOrbitBackups());
+  useEffect(() => {
+    setBackups(listOrbitBackups());
+  }, [data]);
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);

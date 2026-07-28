@@ -518,8 +518,11 @@ export const useOrbitStore = create<OrbitStore>()(
       partialize: (state) => ({ data: state.data, activeSubjectId: state.activeSubjectId }),
       migrate: (persisted) => {
         const maybeState = persisted as Partial<OrbitStore> | undefined;
-        if (maybeState?.data && maybeState.data.schemaVersion !== STORAGE_SCHEMA_VERSION) saveBackup(normalizeData(maybeState.data), 'before-migration');
-        return { ...maybeState, data: normalizeData(maybeState?.data) };
+        const data = normalizeData(maybeState?.data);
+        if (maybeState?.data && maybeState.data.schemaVersion !== STORAGE_SCHEMA_VERSION) {
+          saveBackup(maybeState.data as OrbitData, 'before-migration');
+        }
+        return { ...maybeState, data };
       },
       merge: (persisted, current) => {
         const maybeState = persisted as Partial<OrbitStore> | undefined;

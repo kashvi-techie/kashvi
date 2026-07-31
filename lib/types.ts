@@ -57,7 +57,7 @@ export type Subject = {
   name: string;
   shortName: string;
   code: string;
-  credits: number;
+  credits?: number;
   accent: string;
   modules: Module[];
   totalStudyHours: number;

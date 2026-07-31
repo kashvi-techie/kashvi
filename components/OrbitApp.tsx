@@ -42,7 +42,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { activeSubjects, findSubject, findTopic, getStudyStreak, recommendedNextTask, revisionStatus, searchData, semesterProgress, subjectProgress, topicCompletion, weeklyActivity } from '@/lib/progress';
-import { calculateSyllabusStats, ExtractedSyllabus, extractedToOrbitData, extractSyllabus, extractSyllabusText } from '@/lib/syllabusImport';
+import { calculateSyllabusStats, ExtractedSyllabus, extractedToOrbitData, extractSyllabus, extractSyllabusText, PdfExtractionError, PdfExtractionResult } from '@/lib/syllabusImport';
 import { AppPage, LearningState, Module, Note, OrbitData, StudyTask, Subject, Topic } from '@/lib/types';
 import { ImportMode, listOrbitBackups, useOrbitStore } from '@/store/useOrbitStore';
 
@@ -1059,7 +1059,7 @@ function SubjectPage() {
       <section className="panel overflow-hidden p-5 sm:p-7">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">{subject.code} · {subject.credits} credits</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">{subject.code} · {subject.credits ?? 'Credits TBD'} credits</div>
             <h2 className="mt-2 font-serif text-4xl leading-tight sm:text-5xl">{subject.name}</h2>
             <p className="mt-3 max-w-2xl text-sm text-[var(--muted)]">A subject operating surface for roadmap progression, module checkpoints, practice, notes, revision and readiness.</p>
           </div>
@@ -1143,19 +1143,19 @@ function SubjectManager({ subject }: { subject: Subject }) {
   const deleteCustomSubject = useOrbitStore((state) => state.deleteCustomSubject);
   const [title, setTitle] = useState(subject.name);
   const [code, setCode] = useState(subject.code);
-  const [credits, setCredits] = useState(String(subject.credits));
+  const [credits, setCredits] = useState(subject.credits === undefined ? '' : String(subject.credits));
 
   useEffect(() => {
     setTitle(subject.name);
     setCode(subject.code);
-    setCredits(String(subject.credits));
+    setCredits(subject.credits === undefined ? '' : String(subject.credits));
   }, [subject]);
 
   return (
     <section className="panel grid gap-3 p-4 md:grid-cols-[1fr_130px_90px_auto]">
       <input value={title} onChange={(event) => setTitle(event.target.value)} onBlur={() => title.trim() && updateSubject(subject.id, { name: title.trim() })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" aria-label="Subject title" />
       <input value={code} onChange={(event) => setCode(event.target.value)} onBlur={() => updateSubject(subject.id, { code: code.trim() || 'CUSTOM' })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" aria-label="Subject code" />
-      <input value={credits} type="number" min={0} onChange={(event) => setCredits(event.target.value)} onBlur={() => updateSubject(subject.id, { credits: Number(credits) || 0 })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" aria-label="Credits" />
+      <input value={credits} type="number" min={0} onChange={(event) => setCredits(event.target.value)} onBlur={() => updateSubject(subject.id, { credits: credits.trim() === '' ? undefined : Number(credits) || 0 })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" aria-label="Credits" />
       <div className="flex gap-2">
         <button onClick={() => duplicateSubject(subject.id)} className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--border)]" aria-label="Duplicate subject"><Copy size={16} /></button>
         <button onClick={() => archiveSubject(subject.id)} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Archive</button>
@@ -1675,15 +1675,20 @@ function SyllabusImportFlow({ mode, preferences, onConfirm }: { mode: 'onboardin
   const [message, setMessage] = useState('Upload a PDF syllabus or paste syllabus text to generate a structured preview.');
   const [paste, setPaste] = useState('');
   const [draft, setDraft] = useState<ExtractedSyllabus>();
+  const [pdfError, setPdfError] = useState<{ message: string; result?: PdfExtractionResult }>();
   const [loading, setLoading] = useState(false);
   const extractFile = async (file: File) => {
     setLoading(true);
+    setPdfError(undefined);
+    setDraft(undefined);
     try {
       const result = await extractSyllabus(file);
       setDraft(result);
       setMessage(result.warnings.join(' '));
-    } catch {
-      setMessage('ORBIT could not extract this PDF. Try copying the syllabus text into the paste box.');
+    } catch (error) {
+      const extractionError = error instanceof PdfExtractionError ? error : undefined;
+      setPdfError({ message: extractionError?.message ?? 'PDF could not be read reliably.', result: extractionError?.result });
+      setMessage(extractionError?.message ?? 'PDF could not be read reliably. Paste syllabus text instead or choose another file.');
     } finally {
       setLoading(false);
     }
@@ -1691,6 +1696,7 @@ function SyllabusImportFlow({ mode, preferences, onConfirm }: { mode: 'onboardin
   const extractText = async () => {
     if (!paste.trim()) return;
     setLoading(true);
+    setPdfError(undefined);
     const result = await extractSyllabusText(paste);
     setDraft(result);
     setMessage(result.warnings.join(' '));
@@ -1709,7 +1715,35 @@ function SyllabusImportFlow({ mode, preferences, onConfirm }: { mode: 'onboardin
           <button onClick={extractText} disabled={!paste.trim() || loading} className="rounded-2xl bg-[var(--accent)] p-4 text-sm font-semibold text-white disabled:opacity-50">{loading ? 'Extracting...' : 'Extract syllabus text'}</button>
           <div className="rounded-2xl border border-[var(--warning)]/35 bg-[rgba(215,174,104,0.1)] p-3 text-sm text-[var(--warning)]">{message}</div>
         </div>
-        {draft ? <SyllabusReview draft={draft} setDraft={setDraft} onConfirm={(importMode) => onConfirm(extractedToOrbitData(draft, preferences), importMode)} /> : <SyllabusPreviewEmpty />}
+        {pdfError ? <PdfExtractionErrorPanel error={pdfError} onPaste={() => setPdfError(undefined)} /> : draft ? <SyllabusReview draft={draft} setDraft={setDraft} onConfirm={(importMode) => onConfirm(extractedToOrbitData(draft, preferences), importMode)} /> : <SyllabusPreviewEmpty />}
+      </div>
+    </div>
+  );
+}
+
+function PdfExtractionErrorPanel({ error, onPaste }: { error: { message: string; result?: PdfExtractionResult }; onPaste: () => void }) {
+  const scanned = !!error.result?.quality.likelyScanned;
+  return (
+    <div className="rounded-2xl border border-[var(--danger)]/40 bg-[rgba(224,130,130,0.08)] p-5">
+      <div className="text-xs uppercase tracking-[0.16em] text-[var(--danger)]">PDF could not be read reliably</div>
+      <h3 className="mt-2 text-xl font-semibold">{scanned ? 'This PDF appears to be scanned' : error.message}</h3>
+      <div className="mt-4 grid gap-2 text-sm text-[var(--muted)]">
+        <p>Possible reasons:</p>
+        <p>Unsupported embedded font encoding</p>
+        <p>Scanned or image-only PDF</p>
+        <p>Damaged or password-protected PDF</p>
+      </div>
+      {error.result && (
+        <div className="mt-4 grid gap-2 rounded-xl border border-[var(--border)] p-3 text-xs text-[var(--muted)]">
+          <span>Quality score: {error.result.quality.score}</span>
+          <span>Pages: {error.result.pages.length}</span>
+          <span>Text items: {error.result.pages.reduce((sum, page) => sum + page.itemCount, 0)}</span>
+        </div>
+      )}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={() => alert('OCR is not configured yet. No PDF is sent anywhere. Paste syllabus text or connect an OCR provider.')} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Try OCR</button>
+        <button type="button" onClick={onPaste} className="rounded-xl bg-[var(--accent)] px-3 py-2 text-sm font-semibold text-white">Paste syllabus text instead</button>
+        <button type="button" onClick={onPaste} className="rounded-xl border border-[var(--border)] px-3 py-2 text-sm">Choose another file</button>
       </div>
     </div>
   );
@@ -1737,6 +1771,8 @@ function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllab
       return next;
     });
   };
+  const canImport = draft.stats.subjectCount > 0 && draft.stats.topicCount > 0;
+  const importButtonClass = canImport ? '' : 'cursor-not-allowed opacity-45';
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--elevated)] p-4">
@@ -1747,9 +1783,9 @@ function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllab
             <div className="mt-2 text-xs text-[var(--muted)]">Provider: {draft.provider}</div>
           </div>
           <div className="grid gap-2">
-            <button onClick={() => onConfirm('add-semester')} className="rounded-xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white">Add as new semester</button>
-            <button onClick={() => onConfirm('merge-current')} className="rounded-xl border border-[var(--border)] px-4 py-3 text-sm">Merge into current</button>
-            <button onClick={() => { const typed = prompt('This replaces the current semester structure. ORBIT will create a backup first. Type REPLACE to continue.'); if (typed === 'REPLACE') onConfirm('replace-current'); }} className="rounded-xl border border-[var(--danger)]/45 px-4 py-3 text-sm text-[var(--danger)]">Replace current</button>
+            <button disabled={!canImport} onClick={() => onConfirm('add-semester')} className={`rounded-xl bg-[var(--accent)] px-4 py-3 text-sm font-semibold text-white ${importButtonClass}`}>Add as new semester</button>
+            <button disabled={!canImport} onClick={() => onConfirm('merge-current')} className={`rounded-xl border border-[var(--border)] px-4 py-3 text-sm ${importButtonClass}`}>Merge into current</button>
+            <button disabled={!canImport} onClick={() => { const typed = prompt('This replaces the current semester structure. ORBIT will create a backup first. Type REPLACE to continue.'); if (typed === 'REPLACE') onConfirm('replace-current'); }} className={`rounded-xl border border-[var(--danger)]/45 px-4 py-3 text-sm text-[var(--danger)] ${importButtonClass}`}>Replace current</button>
           </div>
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-4">
@@ -1778,7 +1814,7 @@ function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllab
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="truncate font-semibold">{subject.name}</div>
-                  <div className="text-xs text-[var(--muted)]">{subject.code} · {subject.credits} credits · {subject.modules.length} modules</div>
+                  <div className="text-xs text-[var(--muted)]">{subject.code} · {subject.credits ?? 'Needs review'} credits · {subject.modules.length} modules</div>
                 </div>
                 <button type="button" onClick={(event) => { event.preventDefault(); updateDraft((next) => { next.semester.subjects.splice(subjectIndex, 1); }); }} className="grid h-9 w-9 place-items-center rounded-xl border border-[var(--danger)]/35 text-[var(--danger)]"><Trash2 size={15} /></button>
               </div>
@@ -1787,7 +1823,7 @@ function SyllabusReview({ draft, setDraft, onConfirm }: { draft: ExtractedSyllab
               <div className="grid gap-2 md:grid-cols-[1fr_120px_90px]">
                 <input value={subject.name} onChange={(event) => updateDraft((next) => { next.semester.subjects[subjectIndex].name = event.target.value; next.semester.subjects[subjectIndex].shortName = event.target.value.slice(0, 12); })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
                 <input value={subject.code} onChange={(event) => updateDraft((next) => { next.semester.subjects[subjectIndex].code = event.target.value; })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
-                <input type="number" min={0} value={subject.credits} onChange={(event) => updateDraft((next) => { next.semester.subjects[subjectIndex].credits = Number(event.target.value) || 0; })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
+                <input type="number" min={0} value={subject.credits ?? ''} placeholder="Credits" onChange={(event) => updateDraft((next) => { next.semester.subjects[subjectIndex].credits = event.target.value.trim() === '' ? undefined : Number(event.target.value) || 0; })} className="rounded-xl border border-[var(--border)] bg-transparent px-3 py-2 text-sm" />
               </div>
               {subject.modules.map((module, moduleIndex) => (
                 <SyllabusModuleEditor

@@ -93,6 +93,7 @@ export const mockedOcrProvider: OcrProvider = {
 const accents = ['#A78BFA', '#78C6A3', '#D7AE68', '#8FC7FF', '#E08282', '#B9A7FF'];
 const checkpointKeys: CheckpointKey[] = ['concept', 'notes', 'code', 'questions', 'revision'];
 const checklist = () => checkpointKeys.map((key) => ({ key, label: checkpointLabel(key), completed: false }));
+const courseCodePattern = /\b(?:[A-Z]{1,10}\s*[-/]?\s*\d{2,4}[A-Z]?|\d{2,4}\s*[A-Z]{2,10}\s*\d{2,4}[A-Z]?|[A-Z]{2,5}\s*\d{2,4}\s*[A-Z]?)\b/;
 const noiseLinePatterns = [
   /^adobe$/i,
   /^identity(?:-h)?$/i,
@@ -333,7 +334,7 @@ function calculateParserConfidence(text: string, semester: Semester) {
   const hasCourseCodes = semester.subjects.filter((subject) => subject.code && !subject.code.startsWith('SUB-')).length;
   const topicCount = semester.subjects.flatMap((subject) => subject.modules.flatMap((module) => module.topics)).length;
   const moduleCount = semester.subjects.flatMap((subject) => subject.modules).length;
-  const structureSignals = [/course\s+code/i, /subject\s+name/i, /\b[A-Z]{2,6}\s*[- ]?\d{2,4}\b/, /module\s+(?:i|ii|iii|iv|\d+)/i, /unit\s+(?:i|ii|iii|iv|\d+)/i].filter((pattern) => pattern.test(text)).length;
+  const structureSignals = [/course\s+code/i, /subject\s+name/i, courseCodePattern, /module\s*[-:]?\s*(?:i|ii|iii|iv|\d+)/i, /unit\s*[-:]?\s*(?:i|ii|iii|iv|\d+)/i].filter((pattern) => pattern.test(text)).length;
   return Math.min(100, Math.round(structureSignals * 14 + hasCourseCodes * 10 + Math.min(topicCount, 20) * 2 + Math.min(moduleCount, 10) * 2));
 }
 
@@ -346,9 +347,13 @@ function detectSemesterTitle(text: string) {
 
 function detectSubjectBlocks(text: string) {
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
-  const starts = lines
+  const directStarts = lines
     .map((line, index) => ({ line, index }))
     .filter(({ line }) => isSubjectHeading(line));
+  const labelledStarts = detectLabelledSubjectStarts(lines);
+  const starts = [...directStarts, ...labelledStarts]
+    .sort((a, b) => a.index - b.index)
+    .filter((start, index, all) => index === 0 || start.index - all[index - 1].index > 2);
   return starts.map((start, position) => {
     const end = starts[position + 1]?.index ?? lines.length;
     return { heading: start.line, body: lines.slice(start.index + 1, end).join('\n'), index: position };
@@ -358,14 +363,37 @@ function detectSubjectBlocks(text: string) {
 function isSubjectHeading(line: string) {
   if (line.length > 180 || isPdfMetadataNoiseLine(line)) return false;
   const hasExplicitLabel = /(?:course|subject)\s*(?:code|title|name)?/i.test(line);
-  const hasCourseCode = /\b[A-Z]{2,6}\s*[- ]?\d{2,4}\b/.test(line);
-  const hasSubjectWords = /\b(data|algorithm|machine|math|database|network|software|computer|engineering|programming|statistics|probability|operating|web|security|physics|chemistry|english|management)\b/i.test(line);
+  const hasCourseCode = courseCodePattern.test(line);
+  const hasSubjectWords = hasAcademicSubjectWords(line);
   return (hasExplicitLabel && (hasCourseCode || hasSubjectWords)) || (hasCourseCode && (hasSubjectWords || /credits?|L-T-P|teaching\s+hours/i.test(line)));
+}
+
+function detectLabelledSubjectStarts(lines: string[]) {
+  return lines.flatMap((line, index) => {
+    const windowText = lines.slice(index, Math.min(lines.length, index + 8)).join(' ');
+    const labelSignal = /(?:course|subject|paper)\s*(?:code|title|name)|\bcredits?\b|\bL\s*[-:]?\s*T\s*[-:]?\s*P\b/i.test(windowText);
+    const hasCode = courseCodePattern.test(windowText);
+    const hasNameSignal = hasAcademicSubjectWords(windowText) || /(?:course|subject|paper)\s*(?:title|name)\s*[:=-]?\s*[\p{L}]/iu.test(windowText);
+    if (!labelSignal || !hasCode || !hasNameSignal) return [];
+    return [{ line: compactSubjectHeading(windowText), index }];
+  });
+}
+
+function hasAcademicSubjectWords(value: string) {
+  return /\b(data|algorithm|machine|math|database|network|software|computer|engineering|programming|statistics|probability|operating|web|security|physics|chemistry|english|management|design|analysis|system|artificial|intelligence|learning|cloud|mobile|compiler|microprocessor|electronics|communication|cyber|graphics|calculus|algebra|discrete|java|python|object|oriented)\b/i.test(value);
+}
+
+function compactSubjectHeading(value: string) {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/\b(course|subject|paper)\s*(code|title|name)\s*[:=-]\s*/gi, '$1 $2: ')
+    .slice(0, 180)
+    .trim();
 }
 
 function blockToSubject({ heading, body, index }: { heading: string; body: string; index: number }): Subject {
   const combined = `${heading}\n${body}`;
-  const code = combined.match(/\b[A-Z]{2,6}\s*[- ]?\d{2,4}\b/)?.[0]?.replace(/\s+/, '-') ?? `SUB-${index + 1}`;
+  const code = combined.match(courseCodePattern)?.[0]?.replace(/\s+/, '-') ?? `SUB-${index + 1}`;
   const creditMatch = combined.match(/(?:credits?|cr)\s*[:=-]?\s*(\d+)/i) ?? combined.match(/\b(\d)\s*credits?\b/i);
   const credits = creditMatch ? Number(creditMatch[1]) : undefined;
   const name = cleanSubjectName(heading, code, index);
@@ -400,7 +428,10 @@ function cleanSubjectName(heading: string, code: string, index: number) {
 function detectModules(text: string) {
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
   const starts = lines.map((line, index) => ({ line, index })).filter(({ line }) => /^(module|unit)\s*[-:]?\s*([ivxlcdm]+|\d+)/i.test(line));
-  if (!starts.length) return [];
+  if (!starts.length) {
+    const fallbackTopics = detectTopics(text);
+    return fallbackTopics.length ? [{ title: 'Syllabus', body: fallbackTopics.join('\n') }] : [];
+  }
   return starts.map((start, position) => {
     const end = starts[position + 1]?.index ?? lines.length;
     const [moduleTitle, inlineBody = ''] = start.line.split(/\s*:\s*/, 2);

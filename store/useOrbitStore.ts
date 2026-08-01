@@ -138,6 +138,40 @@ function collectTopicProgress(semester: Semester, existing: Record<string, Topic
   return topicProgress;
 }
 
+function starterTaskLimit(preferences: UserPreferences) {
+  if (preferences.dailyTime === '30 minutes') return 1;
+  if (preferences.dailyTime === '1 hour') return 2;
+  if (preferences.dailyTime === '2 hours') return 4;
+  return 3;
+}
+
+function ensureStarterTasks(data: OrbitData) {
+  const existingTopicIds = new Set(data.tasks.map((task) => task.topicId).filter(Boolean));
+  const candidates = data.semester.subjects
+    .filter((subject) => !subject.archived)
+    .flatMap((subject) => {
+      const topic = subject.modules.flatMap((module) => module.topics).find((item) => !existingTopicIds.has(item.id));
+      return topic ? [{ subject, topic }] : [];
+    })
+    .slice(0, starterTaskLimit(data.preferences));
+
+  candidates.forEach(({ subject, topic }) => {
+    data.tasks.push({
+      id: `task-import-${topic.id}`,
+      subjectId: subject.id,
+      topicId: topic.id,
+      title: `Learn ${topic.title}`,
+      actionType: 'Learn',
+      estimatedMinutes: Math.min(topic.estimatedMinutes || 45, 60),
+      priority: 'Medium',
+      completed: false,
+      order: data.tasks.length,
+      scheduledFor: today(),
+    });
+  });
+  return data;
+}
+
 function syncAllProgress(data: OrbitData) {
   data.topicProgress = collectTopicProgress(data.semester, data.topicProgress ?? {});
   data.semesters = (data.semesters?.length ? data.semesters : [data.semester]).map((semester) => {
@@ -411,16 +445,25 @@ export const useOrbitStore = create<OrbitStore>()(
           saveBackup(state.data, `before-${mode}`);
           const imported = normalizeData(incoming);
           if (mode === 'merge-current') {
-            const merged = mergeSemesterIntoCurrent(state.data, imported);
+            const merged = ensureStarterTasks(mergeSemesterIntoCurrent(state.data, imported));
             return { data: { ...merged, preferences: { ...merged.preferences, onboardingComplete: true, setupMethod: 'import' } } };
           }
           if (mode === 'replace-current') {
-            return { data: { ...imported, preferences: { ...state.data.preferences, ...imported.preferences, onboardingComplete: true, setupMethod: 'import' } }, activeSubjectId: imported.semester.subjects[0]?.id ?? '' };
+            imported.preferences = { ...state.data.preferences, ...imported.preferences, onboardingComplete: true, setupMethod: 'import' };
+            ensureStarterTasks(imported);
+            return { data: imported, activeSubjectId: imported.semester.subjects[0]?.id ?? '' };
           }
           const data = structuredClone(state.data) as OrbitData;
           data.semesters = [...(data.semesters ?? [data.semester]).filter((semester) => semester.id !== imported.semester.id), imported.semester];
           data.preferences = { ...data.preferences, onboardingComplete: true, setupMethod: 'import' };
           data.topicProgress = { ...data.topicProgress, ...collectTopicProgress(imported.semester, imported.topicProgress) };
+          const currentIsEmpty = !data.semester.subjects.some((subject) => subject.modules.some((module) => module.topics.length));
+          if (currentIsEmpty) {
+            data.semester = imported.semester;
+            data.activeSemesterId = imported.semester.id;
+            ensureStarterTasks(data);
+            return { data, activeSubjectId: imported.semester.subjects[0]?.id ?? '' };
+          }
           return { data };
         });
       },

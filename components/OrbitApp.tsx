@@ -1084,7 +1084,7 @@ function SubjectPage() {
       {tab === 'Practice' && <PracticePage subjectFilter={subject.id} />}
       {tab === 'Notes' && <NotesPage subjectFilter={subject.id} />}
       {tab === 'Revision' && <RevisionPage subjectFilter={subject.id} />}
-      {tab === 'Analytics' && <SubjectAnalytics subject={subject} />}
+      {tab === 'Analytics' && <SubjectAnalytics subject={subject} data={data} />}
     </div>
   );
 }
@@ -1285,8 +1285,8 @@ function PracticePage({ subjectFilter }: { subjectFilter?: string }) {
 function AnalyticsPage() {
   const data = useOrbitStore((state) => state.data);
   const subjects = activeSubjects(data);
-  const subjectData = subjects.map((subject) => ({ name: subject.shortName, progress: subjectProgress(subject).percentage, hours: Math.round(data.sessions.filter((session) => session.subjectId === subject.id).reduce((sum, session) => sum + session.minutes, 0) / 60), color: subject.accent }));
-  const states = ['not-started', 'learning', 'practising', 'completed'].map((state) => ({ name: stateLabels[state as LearningState], value: subjects.flatMap((subject) => subject.modules.flatMap((module) => module.topics)).filter((topic) => topic.state === state).length }));
+  const subjectData = subjects.map((subject) => ({ name: subject.shortName, progress: subjectProgress(subject, data).percentage, hours: Math.round(data.sessions.filter((session) => session.subjectId === subject.id).reduce((sum, session) => sum + session.minutes, 0) / 60), color: subject.accent }));
+  const states = ['not-started', 'learning', 'practising', 'completed'].map((state) => ({ name: stateLabels[state as LearningState], value: subjects.flatMap((subject) => subject.modules.flatMap((module) => module.topics)).filter((topic) => (data.topicProgress[topic.id]?.state ?? topic.state) === state).length }));
   return (
     <div className="grid gap-5 xl:grid-cols-2">
       <section className="panel p-5 sm:p-6">
@@ -1309,8 +1309,8 @@ function AnalyticsPage() {
   );
 }
 
-function SubjectAnalytics({ subject }: { subject: Subject }) {
-  const modules = subject.modules.map((module) => ({ name: module.title, progress: Math.round(module.topics.reduce((sum, topic) => sum + topicCompletion(topic), 0) / Math.max(module.topics.length, 1)) }));
+function SubjectAnalytics({ subject, data }: { subject: Subject; data: OrbitData }) {
+  const modules = subject.modules.map((module) => ({ name: module.title, progress: Math.round(module.topics.reduce((sum, topic) => sum + topicCompletion(topic, data), 0) / Math.max(module.topics.length, 1)) }));
   return <section className="panel p-5 sm:p-6"><SectionHeader title="Module analytics" /><div className="h-64"><ResponsiveContainer><BarChart data={modules}><XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 11 }} /><YAxis hide /><Tooltip contentStyle={{ background: 'var(--elevated)', border: '1px solid var(--border)', borderRadius: 12 }} /><Bar dataKey="progress" fill={subject.accent} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer></div></section>;
 }
 

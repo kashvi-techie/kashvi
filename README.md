@@ -18,7 +18,8 @@ Open the local address printed in the terminal. You can also open `index.html` d
 - `styles.css` contains the responsive layout, theme variables, and component styling.
 - `app.js` contains rendering, study planning interactions, local storage, and JSON import/export.
 - `server.js` serves the static files locally using Node's built-in HTTP module.
-- `assignent - 2/` contains the requested HTML assignment pages.
+- `assignent - 1/` contains the portfolio assignment page.
+- `assignent - 2/` contains the HTML practice assignment pages.
 
 ## Included workflows
 

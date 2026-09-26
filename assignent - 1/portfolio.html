@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <title>Kashvi Pundir | Web Developer</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box
+        }
+
+        html {
+            scroll-behavior: smooth
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #111;
+            background: #fff
+        }
+
+        header {
+            height: 71px;
+            background: #09234a;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 52px
+        }
+
+        .logo h2 {
+            font-size: 25px;
+            margin-bottom: 4px
+        }
+
+        .logo span {
+            font-size: 16px
+        }
+
+        nav {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            gap: 42px
+        }
+
+        nav a {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            color: #fff;
+            font-size: 14px;
+            font-weight: bold;
+            position: relative
+        }
+
+        nav a.active {
+            color: #ffd600
+        }
+
+        nav a.active:after {
+            content: "";
+            position: absolute;
+            bottom: 14px;
+            left: 0;
+            width: 40px;
+            height: 3px;
+            background: #ffd600
+        }
+
+        .hero {
+            height: 270px;
+            background: #edf6ff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 235px;
+            border-bottom: 1px solid #d9d9d9
+        }
+
+        .hero-text {
+            width: 365px
+        }
+
+        .hero-text h1 {
+            font-size: 31px;
+            color: #0a2348;
+            margin-bottom: 5px
+        }
+
+        .hero-text h2 {
+            font-size: 21px;
+            color: #1460b7;
+            margin-bottom: 11px
+        }
+
+        .hero-text p {
+            font-size: 15px;
+            line-height: 21px;
+            margin-bottom: 17px
+        }
+
+        .btn {
+            display: inline-block;
+            background: #0b315e;
+            color: #fff;
+            text-decoration: none;
+            padding: 9px 25px;
+            border-radius: 3px;
+            font-size: 13px;
+            font-weight: bold
+        }
+
+        .profile img {
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 6px solid #fff;
+            box-shadow: 0 1px 7px #aaa
+        }
+
+        .content {
+            width: 960px;
+            margin: 0 auto;
+            padding: 22px 0 27px
+        }
+
+        .top-section {
+            display: grid;
+            grid-template-columns: 280px 170px 1fr;
+            gap: 28px
+        }
+
+        .bottom-section {
+            display: grid;
+            grid-template-columns: 610px 1fr;
+            gap: 30px;
+            margin-top: 26px
+        }
+
+        h2 {
+            font-size: 17px;
+            color: #142d51;
+            margin-bottom: 12px
+        }
+
+        h2 i {
+            color: #1264bd;
+            margin-right: 9px
+        }
+
+        .about p {
+            font-size: 13px;
+            line-height: 19px
+        }
+
+        .skills ul {
+            padding-left: 20px;
+            font-size: 13px;
+            line-height: 21px
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px
+        }
+
+        th,
+        td {
+            border: 1px solid #ccc;
+            padding: 7px 9px;
+            text-align: left
+        }
+
+        th {
+            text-align: center;
+            font-weight: bold
+        }
+
+        .projects h2,
+        .contact h2 {
+            margin-bottom: 13px
+        }
+
+        .project-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px
+        }
+
+        .project {
+            height: 105px;
+            border: 1px solid #d4d4d4;
+            border-radius: 4px;
+            padding: 10px
+        }
+
+        .project h3 {
+            font-size: 13px;
+            color: #162e51;
+            margin-bottom: 7px
+        }
+
+        .project p {
+            font-size: 11px;
+            line-height: 17px;
+            margin-bottom: 8px
+        }
+
+        .project a {
+            font-size: 12px;
+            color: #1465bd;
+            text-decoration: none
+        }
+
+        .connect {
+            margin-top: 28px
+        }
+
+        .socials {
+            display: flex;
+            gap: 18px
+        }
+
+        .socials a {
+            font-size: 29px;
+            text-decoration: none
+        }
+
+        .socials a:first-child {
+            color: #1684c7
+        }
+
+        .socials a:nth-child(2) {
+            color: #111
+        }
+
+        .socials a:nth-child(3) {
+            color: #e33b30
+        }
+
+        form {
+            display: flex;
+            flex-direction: column
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 5px
+        }
+
+        input,
+        textarea {
+            border: 1px solid #d1d6dc;
+            border-radius: 3px;
+            padding: 7px 9px;
+            font-family: Arial;
+            font-size: 12px;
+            margin-bottom: 7px
+        }
+
+        input {
+            height: 26px
+        }
+
+        textarea {
+            height: 55px;
+            resize: none
+        }
+
+        .form-buttons {
+            display: flex;
+            gap: 7px;
+            margin-top: 4px
+        }
+
+        button {
+            border: 0;
+            border-radius: 3px;
+            padding: 7px 19px;
+            background: #0b315e;
+            color: #fff;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer
+        }
+
+        button[type="reset"] {
+            background: #ddd;
+            color: #222
+        }
+
+        footer {
+            height: 43px;
+            background: #09234a;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px
+        }
+
+        @media(max-width:1000px) {
+            header {
+                padding: 0 25px
+            }
+
+            nav {
+                gap: 20px
+            }
+
+            .hero {
+                gap: 100px
+            }
+
+            .content {
+                width: 90%
+            }
+        }
+
+        @media(max-width:750px) {
+            header {
+                height: auto;
+                padding: 15px 20px;
+                flex-direction: column;
+                gap: 15px
+            }
+
+            nav {
+                height: auto;
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 15px
+            }
+
+            nav a {
+                height: 25px
+            }
+
+            nav a.active:after {
+                bottom: -3px
+            }
+
+            .hero {
+                height: auto;
+                padding: 35px 20px;
+                gap: 30px;
+                flex-direction: column;
+                text-align: center
+            }
+
+            .hero-text {
+                width: auto;
+                max-width: 450px
+            }
+
+            .content {
+                width: 90%
+            }
+
+            .top-section,
+            .bottom-section {
+                grid-template-columns: 1fr
+            }
+
+            .project-grid {
+                grid-template-columns: 1fr
+            }
+
+            .profile {
+                order: -1
+            }
+        }
+    </style>
+</head>
+
+
+<body>
+    <header>
+        <div class="logo">
+            <h2>Aman Verma</h2><span>Web Developer</span>
+        </div>
+        <nav>
+            <a href="#home" class="active">Home</a>
+            <a href="#about">About</a>
+            <a href="#skills">Skills</a>
+            <a href="#education">Education</a>
+            <a href="#projects">Projects</a>
+            <a href="#contact">Contact</a>
+        </nav>
+    </header>
+    <main>
+        <section class="hero" id="home">
+            <div class="hero-text">
+                <h1>Hi, I’m Aman Verma</h1>
+                <h2>Web Developer</h2>
+                <p>I am a passionate web developer with a strong interest in building clean, responsive and
+                    user-friendly websites. I love turning ideas into real world applications.</p>
+                <a href="#" class="btn">Download CV</a>
+            </div>
+            <div class="profile">
+                <img src="profile.jpg" alt="Aman Verma">
+            </div>
+        </section>
+        <section class="content">
+            <div class="top-section">
+                <div class="about" id="about">
+                    <h2><i class="fa-solid fa-user"></i> About Me</h2>
+                    <p>I am a quick learner and a team player. I enjoy solving problems and learning new technologies.
+                        My goal is to become a full stack developer and work on impactful projects.</p>
+                </div>
+                <div class="skills" id="skills">
+                    <h2><i class="fa-solid fa-code"></i> Skills</h2>
+                    <ul>
+                        <li>HTML</li>
+                        <li>CSS</li>
+                        <li>JavaScript</li>
+                        <li>Bootstrap</li>
+                        <li>Git & GitHub</li>
+                        <li>Responsive Design</li>
+                    </ul>
+                </div>
+                <div class="education" id="education">
+                    <h2><i class="fa-solid fa-graduation-cap"></i> Education</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Qualification</th>
+                                <th>Institute</th>
+                                <th>Year</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>B.Tech (CSE)</td>
+                                <td>ABC Engineering College</td>
+                                <td>2022</td>
+                                <td>8.6 CGPA</td>
+                            </tr>
+                            <tr>
+                                <td>12th (PCM)</td>
+                                <td>XYZ Public School</td>
+                                <td>2018</td>
+                                <td>85%</td>
+                            </tr>
+                            <tr>
+                                <td>10th</td>
+                                <td>XYZ Public School</td>
+                                <td>2016</td>
+                                <td>90%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="bottom-section">
+                <div class="projects" id="projects">
+                    <h2><i class="fa-solid fa-briefcase"></i> Projects</h2>
+                    <div class="project-grid">
+                        <div class="project">
+                            <h3>1. Portfolio Website</h3>
+                            <p>A personal portfolio website built using HTML and Bootstrap.</p><a href="#">View
+                                Project</a>
+                        </div>
+                        <div class="project">
+                            <h3>2. To-Do List App</h3>
+                            <p>A simple to-do list web app to add, remove and manage tasks.</p><a href="#">View
+                                Project</a>
+                        </div>
+                        <div class="project">
+                            <h3>3. Weather App</h3>
+                            <p>A weather application that shows real-time weather using API.</p><a href="#">View
+                                Project</a>
+                        </div>
+                    </div>
+                    <div class="connect">
+                        <h2><i class="fa-solid fa-link"></i> Connect with me</h2>
+                        <div class="socials">
+                            <a href="#"><i class="fa-brands fa-linkedin"></i></a>
+                            <a href="#"><i class="fa-brands fa-github"></i></a>
+                            <a href="#"><i class="fa-solid fa-envelope"></i></a>
+                        </div>
+                    </div>
+                </div>
+                <div class="contact" id="contact">
+                    <h2><i class="fa-solid fa-envelope"></i> Contact Me</h2>
+                    <form>
+                        <label>Name</label>
+                        <input type="text" placeholder="Enter your name">
+                        <label>Email</label>
+                        <input type="email" placeholder="Enter your email">
+                        <label>Message</label>
+                        <textarea placeholder="Type your message..."></textarea>
+                        <div class="form-buttons">
+                            <button type="submit">Send Message</button>
+                            <button type="reset">Reset</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </section>
+    </main>
+    <footer>© 2024 Aman Verma. All Rights Reserved.</footer>
+</body>
+
+</html>>

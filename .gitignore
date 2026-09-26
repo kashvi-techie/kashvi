@@ -1,8 +1,4 @@
-node_modules
-.next
-out
+node_modules/
 .env*
 !.env.example
 *.log
-next-env.d.ts
-*.tsbuildinfo
